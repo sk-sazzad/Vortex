@@ -58,7 +58,7 @@ def _setup_gui(config: dict):
 
     root = tk.Tk()
     root.title("🌀 Vortex — First Time Setup")
-    root.geometry("420x380")
+    root.geometry("420x480")
     root.resizable(False, False)
     root.configure(bg="#1a1a2e")
     root.eval('tk::PlaceWindow . center')
