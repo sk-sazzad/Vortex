@@ -26,10 +26,7 @@ jobs:
           build-tools: '34.0.0'
 
       - name: 🔑 Gradle setup
-        run: |
-          cd android
-          gradle wrapper --gradle-version 8.3
-          chmod +x gradlew
+        run: chmod +x android/gradlew
 
       - name: 📦 Gradle wrapper download
         run: |
