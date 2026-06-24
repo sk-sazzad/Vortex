@@ -1,0 +1,70 @@
+name: Build Android App (.apk)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Code download করো
+        uses: actions/checkout@v4
+
+      - name: 🐍 Python setup করো
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 📦 System dependencies install করো
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-pip \
+            build-essential \
+            git \
+            ffmpeg \
+            libsdl2-dev \
+            libsdl2-image-dev \
+            libsdl2-mixer-dev \
+            libsdl2-ttf-dev \
+            libportmidi-dev \
+            libswscale-dev \
+            libavformat-dev \
+            libavcodec-dev \
+            zlib1g-dev \
+            libgstreamer1.0 \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            openjdk-17-jdk \
+            unzip \
+            autoconf \
+            libtool \
+            pkg-config \
+            cmake
+
+      - name: 📦 Python dependencies install করো
+        run: |
+          pip install buildozer cython kivy
+
+      - name: 🔨 APK বানাও
+        run: |
+          cd android
+          buildozer android debug
+        timeout-minutes: 60
+
+      - name: 📤 APK upload করো
+        uses: actions/upload-artifact@v4
+        with:
+          name: Vortex-Android
+          path: android/bin/*.apk
+
+      - name: 🚀 Release এ দাও
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: android/bin/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
