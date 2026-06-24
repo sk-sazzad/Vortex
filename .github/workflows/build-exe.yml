@@ -26,24 +26,37 @@ jobs:
       - name: 🔨 .exe বানাও
         run: |
           cd agent
-          pyinstaller --onefile --noconsole --name "Vortex-Agent" --icon=../assets/icon.ico agent.py
-        continue-on-error: true
-
-      - name: 🔨 .exe বানাও (icon ছাড়া)
-        run: |
-          cd agent
           pyinstaller --onefile --noconsole --name "Vortex-Agent" agent.py
 
-      - name: 📤 .exe upload করো
-        uses: actions/upload-artifact@v4
-        with:
-          name: Vortex-Agent-Windows
-          path: agent/dist/Vortex-Agent.exe
+      - name: 🏷️ Version তৈরি করো
+        id: version
+        run: echo "tag=v1.0.${{ github.run_number }}" >> $env:GITHUB_OUTPUT
 
-      - name: 🚀 Release এ দাও
+      - name: 🚀 Auto Release করো
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
         with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "🌀 Vortex ${{ steps.version.outputs.tag }}"
+          body: |
+            ## 🌀 Vortex Agent — Windows
+
+            ### 📥 Install করো
+            1. `Vortex-Agent.exe` download করো
+            2. Double click করে চালাও
+            3. প্রথমবার password set করো
+            4. Android App দিয়ে Scan করো → Connect!
+
+            ### ✅ Features
+            - Auto Discovery (IP লাগবে না)
+            - Remote Shutdown / Restart / Sleep
+            - Volume Control
+            - Screenshot
+            - Terminal Command
+            - File Browser
+            - System Info
+            - Clipboard Sync
           files: agent/dist/Vortex-Agent.exe
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

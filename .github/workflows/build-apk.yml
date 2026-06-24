@@ -22,32 +22,15 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            python3-pip \
-            build-essential \
-            git \
-            ffmpeg \
-            libsdl2-dev \
-            libsdl2-image-dev \
-            libsdl2-mixer-dev \
-            libsdl2-ttf-dev \
-            libportmidi-dev \
-            libswscale-dev \
-            libavformat-dev \
-            libavcodec-dev \
-            zlib1g-dev \
-            libgstreamer1.0 \
-            gstreamer1.0-plugins-base \
-            gstreamer1.0-plugins-good \
-            openjdk-17-jdk \
-            unzip \
-            autoconf \
-            libtool \
-            pkg-config \
-            cmake
+            python3-pip build-essential git ffmpeg \
+            libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
+            libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev \
+            zlib1g-dev libgstreamer1.0 gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good openjdk-17-jdk unzip \
+            autoconf libtool pkg-config cmake
 
       - name: 📦 Python dependencies install করো
-        run: |
-          pip install buildozer cython kivy
+        run: pip install buildozer cython kivy
 
       - name: 🔨 APK বানাও
         run: |
@@ -55,16 +38,26 @@ jobs:
           buildozer android debug
         timeout-minutes: 60
 
-      - name: 📤 APK upload করো
-        uses: actions/upload-artifact@v4
-        with:
-          name: Vortex-Android
-          path: android/bin/*.apk
+      - name: 🏷️ Version তৈরি করো
+        id: version
+        run: echo "tag=v1.0.${{ github.run_number }}" >> $GITHUB_OUTPUT
 
-      - name: 🚀 Release এ দাও
+      - name: 🚀 Auto Release করো
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
         with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "🌀 Vortex ${{ steps.version.outputs.tag }}"
+          body: |
+            ## 🌀 Vortex — Android App
+
+            ### 📥 Install করো
+            1. `Vortex.apk` download করো
+            2. Mobile এ install করো
+               (Settings → Unknown Sources → Allow)
+            3. App খোলো → Scan করো
+            4. PC দেখাবে → Password দাও → Connect!
           files: android/bin/*.apk
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
