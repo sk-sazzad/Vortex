@@ -530,10 +530,10 @@ class MainActivity : AppCompatActivity() {
             try {
                 var resolved = false
                 wsClient = VortexWSClient(URI(url),
-                    onOpen = {
+                    openCallback = {
                         sendRaw(mapOf("type" to "auth", "password" to password))
                     },
-                    onMessage = { msg ->
+                    messageCallback = { msg ->
                         val data = gson.fromJson(msg, JsonObject::class.java)
                         when (data.get("type")?.asString) {
                             "auth_success" -> {
@@ -562,13 +562,13 @@ class MainActivity : AppCompatActivity() {
                             "response" -> handleResponse(data)
                         }
                     },
-                    onClose = {
+                    closeCallback = {
                         if (isConnected) runOnUiThread {
                             showAlert("Disconnected", "Connection হারিয়ে গেছে!")
                             isConnected = false; showScreen("connect")
                         }
                     },
-                    onError = {
+                    errorCallback = {
                         if (!resolved) runOnUiThread {
                             statusTv.text = "❌ Connection failed!"
                             statusTv.setTextColor(Color.RED)
@@ -714,13 +714,13 @@ class MainActivity : AppCompatActivity() {
 // ===== WEBSOCKET CLIENT =====
 class VortexWSClient(
     uri: URI,
-    private val onOpen: () -> Unit,
-    private val onMessage: (String) -> Unit,
-    private val onClose: () -> Unit,
-    private val onError: () -> Unit
+    private val openCallback: () -> Unit,
+    private val messageCallback: (String) -> Unit,
+    private val closeCallback: () -> Unit,
+    private val errorCallback: () -> Unit
 ) : WebSocketClient(uri) {
-    override fun onOpen(h: ServerHandshake?) = onOpen()
-    override fun onMessage(message: String?) = message?.let { onMessage(it) } ?: Unit
-    override fun onClose(code: Int, reason: String?, remote: Boolean) = onClose()
-    override fun onError(ex: Exception?) = onError()
+    override fun onOpen(h: ServerHandshake?) = openCallback()
+    override fun onMessage(message: String?) { message?.let { messageCallback(it) } }
+    override fun onClose(code: Int, reason: String?, remote: Boolean) = closeCallback()
+    override fun onError(ex: Exception?) = errorCallback()
 }
