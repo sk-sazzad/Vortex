@@ -1,5 +1,5 @@
 """
-Vortex Agent — Full Featured with System Tray
+Vortex Agent — Silent Background Service with System Tray
 """
 import asyncio
 import websockets
@@ -12,7 +12,6 @@ import platform
 import psutil
 import socket
 import threading
-import tkinter as tk
 from pathlib import Path
 
 CONFIG_FILE = Path(__file__).parent / "config.json"
@@ -41,17 +40,17 @@ def get_local_ip():
     except:
         return "127.0.0.1"
 
-def show_notification(msg):
+def show_notification(title, msg):
     try:
         subprocess.Popen(
-            ['powershell', '-Command',
-             f'Add-Type -AssemblyName System.Windows.Forms; '
-             f'$n = New-Object System.Windows.Forms.NotifyIcon; '
-             f'$n.Icon = [System.Drawing.SystemIcons]::Information; '
-             f'$n.Visible = $true; '
-             f'$n.ShowBalloonTip(3000, "Vortex Agent", "{msg}", [System.Windows.Forms.ToolTipIcon]::Info); '
-             f'Start-Sleep -Seconds 4; $n.Dispose()'],
-            shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            ['powershell', '-WindowStyle', 'Hidden', '-Command',
+             f'Add-Type -AssemblyName System.Windows.Forms;'
+             f'$n=New-Object System.Windows.Forms.NotifyIcon;'
+             f'$n.Icon=[System.Drawing.SystemIcons]::Application;'
+             f'$n.Visible=$true;'
+             f'$n.ShowBalloonTip(3000,"{title}","{msg}",[System.Windows.Forms.ToolTipIcon]::None);'
+             f'Start-Sleep 4;$n.Dispose()'],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
     except:
         pass
@@ -73,7 +72,8 @@ def set_autostart(enable):
                           r"Software\Microsoft\Windows\CurrentVersion\Run",
                           0, winreg.KEY_SET_VALUE)
         if enable:
-            winreg.SetValueEx(k, "VortexAgent", 0, winreg.REG_SZ, sys.executable)
+            exe = sys.executable if not getattr(sys, 'frozen', False) else sys.executable
+            winreg.SetValueEx(k, "VortexAgent", 0, winreg.REG_SZ, f'"{exe}"')
         else:
             try:
                 winreg.DeleteValue(k, "VortexAgent")
@@ -81,201 +81,6 @@ def set_autostart(enable):
                 pass
     except:
         pass
-
-# ══════════════════════════
-# SYSTEM TRAY
-# ══════════════════════════
-class VortexTray:
-    def __init__(self):
-        self.root = tk.Tk()
-        self.root.withdraw()
-        self.root.protocol("WM_DELETE_WINDOW", lambda: None)
-        self._build_tray_window()
-        self._build_menus()
-        self.root.after(100, self._tick)
-
-    def _build_tray_window(self):
-        sw = self.root.winfo_screenwidth()
-        sh = self.root.winfo_screenheight()
-        self.tray = tk.Toplevel(self.root)
-        self.tray.overrideredirect(True)
-        self.tray.attributes("-topmost", True)
-        self.tray.attributes("-alpha", 0.95)
-        self.tray.configure(bg="#030310")
-        self.tray.geometry(f"200x36+{sw-208}+{sh-80}")
-        self.tray.protocol("WM_DELETE_WINDOW", lambda: None)
-
-        f = tk.Frame(self.tray, bg="#030310",
-                    highlightbackground="#00e5ff",
-                    highlightthickness=1)
-        f.pack(fill="both", expand=True)
-
-        self.dot = tk.Label(f, text="●", fg="#00e5ff", bg="#030310",
-                           font=("Consolas", 10))
-        self.dot.pack(side="left", padx=(6, 2))
-
-        tk.Label(f, text="VORTEX", fg="#00e5ff", bg="#030310",
-                font=("Consolas", 9, "bold")).pack(side="left")
-
-        self.info_lbl = tk.Label(f, text="RUNNING", fg="#333355",
-                                bg="#030310", font=("Consolas", 8))
-        self.info_lbl.pack(side="left", padx=4)
-
-        tk.Button(f, text="⋮", command=self._show_menu,
-                 bg="#030310", fg="#00e5ff", relief="flat",
-                 font=("Consolas", 12), cursor="hand2",
-                 activebackground="#030310", activeforeground="#ffffff",
-                 bd=0).pack(side="right", padx=4)
-
-        f.bind("<Button-1>", self.show_status)
-        self.dot.bind("<Button-1>", self.show_status)
-        self.info_lbl.bind("<Button-1>", self.show_status)
-
-    def _build_menus(self):
-        self.menu = tk.Menu(self.root, tearoff=0,
-                           bg="#0a0a20", fg="#ffffff",
-                           activebackground="#00e5ff",
-                           activeforeground="#000000",
-                           font=("Consolas", 9))
-        self.menu.add_command(label="  📊  Status", command=self.show_status)
-        self.menu.add_command(label="  ⚙️   Settings", command=self.show_settings)
-        self.menu.add_command(label="  📋  Copy IP", command=self.copy_ip)
-        self.menu.add_separator()
-        self.menu.add_command(label="  ❌  Exit", command=self.exit_app)
-
-    def _show_menu(self):
-        try:
-            x = self.tray.winfo_x() + self.tray.winfo_width() - 10
-            y = self.tray.winfo_y() - 100
-            self.menu.tk_popup(x, y)
-        except:
-            pass
-
-    def _tick(self):
-        count = len(authenticated_clients)
-        if count > 0:
-            self.info_lbl.config(text=f"{count} CONNECTED", fg="#00e676")
-            self.dot.config(fg="#00e676")
-        else:
-            self.info_lbl.config(text="WAITING...", fg="#333355")
-            self.dot.config(fg="#00e5ff")
-        self.root.after(2000, self._tick)
-
-    def show_status(self, *a):
-        w = tk.Toplevel(self.root)
-        w.title("Vortex — Status")
-        w.configure(bg="#030310")
-        w.resizable(False, False)
-        sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
-        w.geometry(f"360x280+{(sw-360)//2}+{(sh-280)//2}")
-
-        f = tk.Frame(w, bg="#030310", padx=24, pady=20)
-        f.pack(fill="both", expand=True)
-
-        tk.Label(f, text="⚡ VORTEX AGENT", fg="#00e5ff", bg="#030310",
-                font=("Consolas", 13, "bold")).pack(pady=(0, 14))
-
-        def row(k, v, vc="#ffffff"):
-            r = tk.Frame(f, bg="#030310")
-            r.pack(fill="x", pady=2)
-            tk.Label(r, text=k, fg="#333355", bg="#030310",
-                    font=("Consolas", 9), width=14, anchor="w").pack(side="left")
-            tk.Label(r, text=v, fg=vc, bg="#030310",
-                    font=("Consolas", 9, "bold")).pack(side="left")
-
-        row("Device:", CONFIG.get("device_name", platform.node()), "#00e5ff")
-        row("IP:", get_local_ip(), "#00e5ff")
-        row("Port:", str(CONFIG.get("port", 8765)), "#00e5ff")
-        row("Status:", "RUNNING ✓", "#00e676")
-        row("Connected:", f"{len(authenticated_clients)} phone(s)",
-            "#00e676" if authenticated_clients else "#333355")
-
-        try:
-            cpu = psutil.cpu_percent(interval=0.1)
-            ram = psutil.virtual_memory()
-            tk.Frame(f, bg="#1a1a2e", height=1).pack(fill="x", pady=8)
-            row("CPU:", f"{cpu}%", "#00e5ff")
-            row("RAM:", f"{ram.percent}% used", "#bf5fff")
-        except:
-            pass
-
-        tk.Button(f, text="[ CLOSE ]", command=w.destroy,
-                 bg="#030310", fg="#00e5ff", relief="flat",
-                 font=("Consolas", 10), cursor="hand2",
-                 activebackground="#030310").pack(pady=(14, 0))
-
-    def show_settings(self, *a):
-        w = tk.Toplevel(self.root)
-        w.title("Vortex — Settings")
-        w.configure(bg="#030310")
-        w.resizable(False, False)
-        sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
-        w.geometry(f"400x380+{(sw-400)//2}+{(sh-380)//2}")
-
-        f = tk.Frame(w, bg="#030310", padx=28, pady=20)
-        f.pack(fill="both", expand=True)
-
-        tk.Label(f, text="⚙️  SETTINGS", fg="#00e5ff", bg="#030310",
-                font=("Consolas", 12, "bold")).pack(pady=(0, 18))
-
-        def field(lbl, val):
-            tk.Label(f, text=lbl, fg="#333355", bg="#030310",
-                    font=("Consolas", 8), anchor="w").pack(fill="x", pady=(0, 2))
-            e = tk.Entry(f, bg="#080818", fg="#ffffff",
-                        insertbackground="#00e5ff",
-                        font=("Consolas", 11), relief="flat", bd=0,
-                        highlightthickness=1,
-                        highlightbackground="#1a1a2e",
-                        highlightcolor="#00e5ff")
-            e.pack(fill="x", ipady=7, pady=(0, 10))
-            e.insert(0, val)
-            return e
-
-        name_e = field("Device Name", CONFIG.get("device_name", platform.node()))
-        pass_e = field("Password", CONFIG.get("password", "vortex123"))
-        port_e = field("Port", str(CONFIG.get("port", 8765)))
-
-        auto_v = tk.BooleanVar(value=is_autostart())
-        cb = tk.Checkbutton(f, text="  Start with Windows",
-                           variable=auto_v, bg="#030310",
-                           fg="#888899", selectcolor="#030310",
-                           activebackground="#030310",
-                           activeforeground="#00e5ff",
-                           font=("Consolas", 9))
-        cb.pack(anchor="w", pady=(0, 14))
-
-        def save():
-            CONFIG["device_name"] = name_e.get().strip() or platform.node()
-            CONFIG["password"] = pass_e.get().strip() or "vortex123"
-            try:
-                CONFIG["port"] = int(port_e.get().strip())
-            except:
-                CONFIG["port"] = 8765
-            save_config(CONFIG)
-            set_autostart(auto_v.get())
-            w.destroy()
-            show_notification("Settings saved!")
-
-        tk.Button(f, text="[ SAVE & APPLY ]", command=save,
-                 bg="#001a1f", fg="#00e5ff",
-                 activebackground="#002a35", activeforeground="#00e5ff",
-                 font=("Consolas", 11, "bold"), relief="flat",
-                 pady=9, cursor="hand2").pack(fill="x")
-
-    def copy_ip(self, *a):
-        ip = get_local_ip()
-        self.root.clipboard_clear()
-        self.root.clipboard_append(ip)
-        show_notification(f"IP copied: {ip}")
-
-    def exit_app(self, *a):
-        global agent_running
-        agent_running = False
-        self.root.quit()
-        os._exit(0)
-
-    def run(self):
-        self.root.mainloop()
 
 # ══════════════════════════
 # COMMAND HANDLERS
@@ -328,8 +133,8 @@ def get_stats():
         "cpu": round(cpu, 1),
         "ram": round(ram.percent, 1),
         "disk": round(disk.percent, 1),
-        "net_sent": round(net.bytes_sent/(1024**2), 1),
-        "net_recv": round(net.bytes_recv/(1024**2), 1),
+        "net_sent": round(net.bytes_sent / (1024**2), 1),
+        "net_recv": round(net.bytes_recv / (1024**2), 1),
     }
 
 def handle_files(action, path=""):
@@ -384,9 +189,7 @@ def handle_performance(action):
             subprocess.Popen(f"taskkill /f /im {proc}", shell=True,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.Popen(
-            "powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c",
-            shell=True
-        )
+            "powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c", shell=True)
         return {"type": "perf_ok", "action": "Gaming mode ON"}
     return {"type": "perf_ok", "action": action}
 
@@ -478,14 +281,13 @@ async def handle_client(websocket, path=None):
                     if data.get("password") == CONFIG["password"]:
                         authed = True
                         authenticated_clients.add(websocket)
-                        show_notification("📱 Phone connected!")
+                        show_notification("Vortex", "Phone connected!")
                         await websocket.send(json.dumps({
                             "type": "auth_ok",
                             "device_name": CONFIG["device_name"],
                             "os": platform.system()
                         }))
                     else:
-                        show_notification("⚠️ Wrong password!")
                         await websocket.send(json.dumps({"type": "auth_fail"}))
                     continue
 
@@ -498,7 +300,7 @@ async def handle_client(websocket, path=None):
                 if t == "command":
                     if cmd.startswith("shell:"):
                         resp = handle_shell(cmd[6:])
-                    elif cmd in ["shutdown","restart","sleep","cancel"]:
+                    elif cmd in ["shutdown", "restart", "sleep", "cancel"]:
                         resp = handle_power(cmd)
                     elif cmd.startswith("media:"):
                         resp = handle_media(cmd.split(":")[1])
@@ -513,7 +315,11 @@ async def handle_client(websocket, path=None):
                     elif cmd.startswith("perf:"):
                         resp = handle_performance(cmd.split(":")[1])
                     elif cmd.startswith("clipboard:set:"):
-                        subprocess.run(f'echo {cmd[14:]}| clip', shell=True)
+                        text = cmd[14:]
+                        subprocess.run(
+                            ['powershell', '-Command', f'Set-Clipboard -Value "{text}"'],
+                            shell=False
+                        )
                         resp = {"type": "clipboard_ok"}
                     elif cmd == "clipboard:get":
                         r = subprocess.run('powershell Get-Clipboard',
@@ -547,14 +353,12 @@ async def handle_client(websocket, path=None):
             except json.JSONDecodeError:
                 pass
             except Exception as e:
-                print(f"Error: {e}")
+                pass
 
     except websockets.exceptions.ConnectionClosed:
         pass
     finally:
         authenticated_clients.discard(websocket)
-        if authed:
-            show_notification("📱 Phone disconnected")
 
 # ══════════════════════════
 # DISCOVERY
@@ -587,10 +391,65 @@ def run_server():
 
     async def serve():
         async with websockets.serve(handle_client, "0.0.0.0", port):
-            print(f"[✓] Server running on port {port}")
             await asyncio.Future()
 
     loop.run_until_complete(serve())
+
+# ══════════════════════════
+# SYSTEM TRAY (pystray)
+# ══════════════════════════
+def create_tray_icon():
+    try:
+        import pystray
+        from PIL import Image, ImageDraw
+
+        # Create icon image (cyan lightning bolt style)
+        size = 64
+        img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        # Draw a simple V shape / bolt
+        draw.rectangle([8, 8, 56, 56], fill=(0, 229, 255, 255))
+        draw.polygon([(32, 10), (18, 36), (30, 36), (22, 54), (46, 28), (34, 28)],
+                    fill=(3, 3, 16, 255))
+
+        def get_status(item):
+            c = len(authenticated_clients)
+            return f"{c} phone connected" if c == 1 else f"{c} phones connected"
+
+        def on_exit(icon, item):
+            global agent_running
+            agent_running = False
+            icon.stop()
+            os._exit(0)
+
+        def copy_ip(icon, item):
+            ip = get_local_ip()
+            subprocess.run(['powershell', '-Command', f'Set-Clipboard -Value "{ip}"'],
+                          shell=False)
+            show_notification("Vortex", f"IP copied: {ip}")
+
+        def open_settings(icon, item):
+            from config import show_setup
+            show_setup()
+            global CONFIG
+            CONFIG = load_config()
+
+        menu = pystray.Menu(
+            pystray.MenuItem(get_status, None, enabled=False),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Copy IP Address", copy_ip),
+            pystray.MenuItem("Settings", open_settings),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Exit", on_exit),
+        )
+
+        icon = pystray.Icon("VortexAgent", img, "Vortex Agent", menu)
+        icon.run()
+
+    except ImportError:
+        # pystray not available — just keep running silently
+        while agent_running:
+            time.sleep(1)
 
 # ══════════════════════════
 # MAIN
@@ -602,13 +461,11 @@ def main():
         global CONFIG
         CONFIG = load_config()
 
-    print(f"[✓] Vortex Agent | {CONFIG['device_name']} | {get_local_ip()}:{CONFIG['port']}")
-    show_notification(f"Vortex started — {get_local_ip()}")
+    show_notification("Vortex Agent", f"Running on {get_local_ip()}:{CONFIG['port']}")
 
     threading.Thread(target=run_server, daemon=True).start()
 
-    tray = VortexTray()
-    tray.run()
+    create_tray_icon()
 
 if __name__ == "__main__":
     main()
