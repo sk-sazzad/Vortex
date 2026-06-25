@@ -553,7 +553,7 @@ class MainActivity : AppCompatActivity() {
         }
         scroll.addView(layout)
 
-        val device = connectedDevice!!
+        val device = connectedDevice ?: return ScrollView(this)
 
         // Connected header
         layout.addView(buildConnectedHeader(device))
@@ -2068,7 +2068,11 @@ class RadarView(context: Context) : View(context) {
             angle = it.animatedValue as Float
             invalidate()
         }
-        start()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        animator.start()
     }
 
     private val cyan = Color.parseColor("#00e5ff")
