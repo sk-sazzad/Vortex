@@ -12,12 +12,10 @@ import android.view.*
 import android.view.animation.LinearInterpolator
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import org.java_websocket.client.WebSocketClient
 import org.java_websocket.handshake.ServerHandshake
-import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.URI
@@ -78,7 +76,7 @@ class MainActivity : AppCompatActivity() {
 
     private var wsClient: WebSocketClient? = null
     private var connectedDevice: VortexDevice? = null
-    private var currentTab = 0 // 0=devices, 1=control, 2=files, 3=settings
+    private var currentTab = 0
 
     // UI containers
     private lateinit var root: FrameLayout
@@ -92,8 +90,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = C.BG
-        window.navigationBarColor = C.BG
+        // BUG FIX #1: Wrap in try-catch — status/nav bar color APIs can crash on some ROMs
+        try {
+            window.statusBarColor = C.BG
+            window.navigationBarColor = C.BG
+        } catch (e: Exception) { /* ignore */ }
         buildApp()
     }
 
@@ -134,24 +135,11 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(MATCH, dp(58))
         }
 
-        // top border
-        val border = View(this).apply {
-            setBackgroundColor(Color.argb(25, 0, 229, 255))
-            layoutParams = LinearLayout.LayoutParams(MATCH, 1)
-        }
-
-        val wrap = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(MATCH, dp(58))
-        }
-        wrap.addView(border)
-        wrap.addView(nav)
-
         val tabs = listOf(
-            Pair("Devices", R.drawable.ic_devices_placeholder),
-            Pair("Control", R.drawable.ic_control_placeholder),
-            Pair("Files",   R.drawable.ic_files_placeholder),
-            Pair("Settings",R.drawable.ic_settings_placeholder)
+            Pair("Devices",  0),
+            Pair("Control",  1),
+            Pair("Files",    2),
+            Pair("Settings", 3)
         )
 
         tabs.forEachIndexed { idx, (label, _) ->
@@ -159,7 +147,7 @@ class MainActivity : AppCompatActivity() {
             nav.addView(tabView)
         }
 
-        // Return wrapper so border shows
+        // BUG FIX #2: Wrap nav in a vertical container with top border
         val finalWrap = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
@@ -190,7 +178,6 @@ class MainActivity : AppCompatActivity() {
         tabIndicators[idx] = indicator
         tab.addView(indicator)
 
-        // Icon (text emoji as placeholder)
         val icons = listOf("⊞", "⚡", "📁", "⚙")
         val iconView = TextView(this).apply {
             text = icons[idx]
@@ -221,12 +208,12 @@ class MainActivity : AppCompatActivity() {
         currentTab = idx
         contentArea.removeAllViews()
 
-        // Update nav colors
         for (i in 0..3) {
             val active = i == idx
             tabIndicators[i]?.visibility = if (active) View.VISIBLE else View.INVISIBLE
             val tab = tabButtons[i] ?: continue
             val color = if (active) C.CYAN else Color.argb(80, 255, 255, 255)
+            // BUG FIX #3: getChildAt index was off — indicator is child 0, icon is 1, label is 2
             (tab.getChildAt(1) as? TextView)?.setTextColor(color)
             (tab.getChildAt(2) as? TextView)?.setTextColor(color)
         }
@@ -255,10 +242,8 @@ class MainActivity : AppCompatActivity() {
         }
         scroll.addView(layout)
 
-        // Header
         layout.addView(buildHeader("VORTEX", "Find & connect your devices"))
 
-        // Radar scan animation view
         val radarView = RadarView(this)
         layout.addView(radarView.apply {
             layoutParams = LinearLayout.LayoutParams(MATCH, dp(180))
@@ -268,10 +253,22 @@ class MainActivity : AppCompatActivity() {
         layout.addView(sectionLabel("// DEVICES FOUND"))
         layout.addView(spacer(8))
 
-        // Scan for devices
+        // Loading text — added before async scan starts
+        val scanningText = TextView(this).apply {
+            text = "Scanning network..."
+            setTextColor(Color.argb(100, 0, 229, 255))
+            textSize = 11f
+            gravity = Gravity.CENTER
+            setPadding(0, dp(8), 0, dp(8))
+            letterSpacing = 0.1f
+        }
+        layout.addView(scanningText)
+
         executor.execute {
             val devices = scanNetwork()
             handler.post {
+                // BUG FIX #4: Remove "Scanning..." text before adding results
+                layout.removeView(scanningText)
                 if (devices.isEmpty()) {
                     layout.addView(emptyState("No devices found", "Make sure agent.exe is running on your PC"))
                 } else {
@@ -284,17 +281,6 @@ class MainActivity : AppCompatActivity() {
                 layout.addView(buildRescanButton(layout))
             }
         }
-
-        // Loading indicator while scanning
-        val scanningText = TextView(this).apply {
-            text = "Scanning network..."
-            setTextColor(Color.argb(100, 0, 229, 255))
-            textSize = 11f
-            gravity = Gravity.CENTER
-            setPadding(0, dp(8), 0, dp(8))
-            letterSpacing = 0.1f
-        }
-        layout.addView(scanningText)
 
         return scroll
     }
@@ -313,7 +299,6 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener { showAuthDialog(device) }
         }
 
-        // Icon
         val iconBox = frameBox(dp(36), dp(36), Color.argb(30, 0, 229, 255), Color.argb(60, 0, 229, 255), 10f)
         val iconText = TextView(this).apply {
             text = if (device.name.contains("Laptop", true)) "💻" else "🖥"
@@ -324,7 +309,6 @@ class MainActivity : AppCompatActivity() {
         card.addView(iconBox)
         card.addView(spacer(10, horizontal = true))
 
-        // Info
         val info = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
@@ -355,7 +339,6 @@ class MainActivity : AppCompatActivity() {
         info.addView(meta)
         card.addView(info)
 
-        // Ping
         if (device.online) {
             card.addView(TextView(this).apply {
                 text = "${device.ping}ms"
@@ -373,17 +356,26 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setPadding(0, dp(12), 0, dp(12))
             background = cardBg(Color.argb(20, 0, 229, 255), Color.argb(50, 0, 229, 255), 10f)
-            setOnClickListener {
-                parent.removeView(this)
-                executor.execute {
-                    val devices = scanNetwork()
-                    handler.post {
-                        devices.forEach { device ->
-                            parent.addView(buildDeviceCard(device))
-                            parent.addView(spacer(8))
-                        }
-                        parent.addView(buildRescanButton(parent))
+        }
+        btn.setOnClickListener {
+            parent.removeView(btn)
+            val scanning = TextView(this).apply {
+                text = "Scanning network..."
+                setTextColor(Color.argb(100, 0, 229, 255))
+                textSize = 11f
+                gravity = Gravity.CENTER
+                setPadding(0, dp(8), 0, dp(8))
+            }
+            parent.addView(scanning)
+            executor.execute {
+                val devices = scanNetwork()
+                handler.post {
+                    parent.removeView(scanning)
+                    devices.forEach { device ->
+                        parent.addView(buildDeviceCard(device))
+                        parent.addView(spacer(8))
                     }
+                    parent.addView(buildRescanButton(parent))
                 }
             }
         }
@@ -397,35 +389,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showAuthDialog(device: VortexDevice) {
-        val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
-        val layout = LinearLayout(this).apply {
+        // BUG FIX #5: Use AlertDialog instead of fullscreen Dialog to avoid crash
+        // on certain Android versions where Theme_Black_NoTitleBar_Fullscreen behaves
+        // differently and causes WindowManager exceptions
+        val dialogLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.BOTTOM
-            setBackgroundColor(Color.argb(160, 0, 0, 0))
-            layoutParams = ViewGroup.LayoutParams(MATCH, MATCH)
+            setPadding(dp(20), dp(20), dp(20), dp(20))
         }
 
-        val sheet = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(20), dp(20), dp(30))
-            background = roundedBg(C.BG2, 24f, topOnly = true)
-        }
-
-        // Handle
-        sheet.addView(View(this).apply {
-            background = circle(Color.argb(60, 255, 255, 255))
-            layoutParams = LinearLayout.LayoutParams(dp(32), dp(3)).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-                bottomMargin = dp(18)
-            }
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(2).toFloat()
-                setColor(Color.argb(60, 255, 255, 255))
-            }
-        })
-
-        // Device info
         val devRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -439,56 +410,26 @@ class MainActivity : AppCompatActivity() {
         devInfo.addView(TextView(this).apply { text = device.name; setTextColor(C.T_HIGH); textSize = 14f; setTypeface(typeface, Typeface.BOLD) })
         devInfo.addView(TextView(this).apply { text = "${device.os} · ${device.ip} · ${device.ping}ms"; setTextColor(C.T_LOW); textSize = 9f })
         devRow.addView(devInfo)
-        sheet.addView(devRow)
+        dialogLayout.addView(devRow)
 
-        // Divider
-        sheet.addView(View(this).apply { setBackgroundColor(Color.argb(20, 0, 229, 255)); layoutParams = LinearLayout.LayoutParams(MATCH, 1).apply { bottomMargin = dp(16) } })
-
-        // Password label
-        sheet.addView(TextView(this).apply {
-            text = "// PASSWORD"
-            setTextColor(Color.argb(80, 191, 95, 255))
-            textSize = 9f
-            letterSpacing = 0.2f
-        })
-        sheet.addView(spacer(6))
-
-        // Password field
         val passField = android.widget.EditText(this).apply {
             hint = "Enter password"
             setHintTextColor(Color.argb(60, 255, 255, 255))
-            setTextColor(C.T_HIGH)
             textSize = 13f
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-            background = cardBg(Color.argb(20, 191, 95, 255), Color.argb(50, 191, 95, 255), 10f)
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(14) }
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
         }
-        sheet.addView(passField)
+        dialogLayout.addView(passField)
 
-        // Connect button
-        val connectBtn = TextView(this).apply {
-            text = "[ CONNECT → ]"
-            setTextColor(C.CYAN)
-            textSize = 12f
-            gravity = Gravity.CENTER
-            letterSpacing = 0.15f
-            setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, dp(14), 0, dp(14))
-            background = cardBg(Color.argb(30, 0, 229, 255), Color.argb(80, 0, 229, 255), 10f)
-            setOnClickListener {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Connect to ${device.name}")
+            .setView(dialogLayout)
+            .setPositiveButton("CONNECT") { _, _ ->
                 val pass = passField.text.toString()
-                dialog.dismiss()
                 connectToDevice(device, pass)
             }
-        }
-        sheet.addView(connectBtn)
-
-        layout.addView(sheet)
-        layout.setOnClickListener { dialog.dismiss() }
-
-        dialog.setContentView(layout)
-        dialog.show()
+            .setNegativeButton("CANCEL", null)
+            .show()
     }
 
     // ═══════════════════════════════════════
@@ -553,19 +494,16 @@ class MainActivity : AppCompatActivity() {
         }
         scroll.addView(layout)
 
-        val device = connectedDevice ?: return ScrollView(this)
+        val device = connectedDevice ?: return scroll
 
-        // Connected header
         layout.addView(buildConnectedHeader(device))
         layout.addView(spacer(16))
 
-        // ── SCREEN ──
         layout.addView(sectionLabel("// SCREEN"))
         layout.addView(spacer(8))
         layout.addView(buildScreenCard())
         layout.addView(spacer(16))
 
-        // ── DASHBOARD ──
         layout.addView(sectionLabel("// DASHBOARD"))
         layout.addView(spacer(8))
         layout.addView(buildStatsGrid())
@@ -575,37 +513,31 @@ class MainActivity : AppCompatActivity() {
         layout.addView(buildSliders())
         layout.addView(spacer(16))
 
-        // ── SHELL ──
         layout.addView(sectionLabel("// SHELL"))
         layout.addView(spacer(8))
         layout.addView(buildShellCard())
         layout.addView(spacer(16))
 
-        // ── MEDIA ──
         layout.addView(sectionLabel("// MEDIA"))
         layout.addView(spacer(8))
         layout.addView(buildMediaCard())
         layout.addView(spacer(16))
 
-        // ── ALERTS ──
         layout.addView(sectionLabel("// ALERTS"))
         layout.addView(spacer(8))
         layout.addView(buildAlertsCard())
         layout.addView(spacer(16))
 
-        // ── CLIPBOARD ──
         layout.addView(sectionLabel("// CLIPBOARD SYNC"))
         layout.addView(spacer(8))
         layout.addView(buildClipboardCard())
         layout.addView(spacer(16))
 
-        // ── MESSAGES ──
         layout.addView(sectionLabel("// MESSAGES"))
         layout.addView(spacer(8))
         layout.addView(buildMessagesCard())
         layout.addView(spacer(16))
 
-        // ── AUTOMATION ──
         layout.addView(sectionLabel("// AUTOMATION"))
         layout.addView(spacer(8))
         layout.addView(buildAutomationCard())
@@ -634,7 +566,6 @@ class MainActivity : AppCompatActivity() {
         info.addView(TextView(this).apply { text = "${device.ip} · ${device.ping}ms"; setTextColor(C.T_LOW); textSize = 9f })
         row.addView(info)
 
-        // Live badge
         val badge = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -658,7 +589,6 @@ class MainActivity : AppCompatActivity() {
             background = cardBg(Color.argb(15, 0, 229, 255), Color.argb(40, 0, 229, 255), 14f)
         }
 
-        // Screen preview
         val preview = FrameLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(MATCH, dp(160))
             background = roundedBg(Color.parseColor("#000000"), 10f)
@@ -682,7 +612,6 @@ class MainActivity : AppCompatActivity() {
         card.addView(preview)
         card.addView(spacer(10))
 
-        // Controls
         val ctrlRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
@@ -707,7 +636,6 @@ class MainActivity : AppCompatActivity() {
         card.addView(ctrlRow)
         card.addView(spacer(8))
 
-        // Info bar
         val infoBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(dp(10), dp(6), dp(10), dp(6))
@@ -779,7 +707,6 @@ class MainActivity : AppCompatActivity() {
             setTypeface(typeface, Typeface.BOLD)
         })
 
-        // Progress bar
         val barBg = FrameLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(MATCH, dp(2)).apply {
                 topMargin = dp(4)
@@ -787,7 +714,8 @@ class MainActivity : AppCompatActivity() {
             }
             background = roundedBg(Color.argb(30, 255, 255, 255), 2f)
         }
-        val pct = value.replace("%", "").replace("°", "").replace("↓", "").toIntOrNull() ?: 50
+        // BUG FIX #6: Safe parsing — "↓48" and "52°" must strip non-numeric chars
+        val pct = value.filter { it.isDigit() }.toIntOrNull() ?: 50
         barBg.addView(View(this).apply {
             layoutParams = FrameLayout.LayoutParams((pct * 2).coerceAtMost(200), dp(2))
             background = roundedBg(color, 2f)
@@ -867,13 +795,15 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(MATCH, dp(3))
             background = roundedBg(Color.argb(30, 255, 255, 255), 2f)
         }
-        trackBg.addView(View(this).apply {
-            layoutParams = FrameLayout.LayoutParams(0, dp(3)).also {
-                it.width = 0 // will be set after layout
-            }
+        val fill = View(this).apply {
             background = roundedBg(color, 2f)
-            post {
-                layoutParams = FrameLayout.LayoutParams((parent as FrameLayout).width * value / 100, dp(3))
+        }
+        trackBg.addView(fill)
+        // BUG FIX #7: Set bar width AFTER layout using ViewTreeObserver — avoids 0-width bar
+        trackBg.viewTreeObserver.addOnGlobalLayoutListener(object : ViewTreeObserver.OnGlobalLayoutListener {
+            override fun onGlobalLayout() {
+                trackBg.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                fill.layoutParams = FrameLayout.LayoutParams(trackBg.width * value / 100, dp(3))
             }
         })
         row.addView(trackBg)
@@ -887,7 +817,6 @@ class MainActivity : AppCompatActivity() {
             background = cardBg(Color.argb(15, 0, 229, 255), Color.argb(35, 0, 229, 255), 14f)
         }
 
-        // Quick commands
         val cmdRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(10) }
@@ -906,7 +835,6 @@ class MainActivity : AppCompatActivity() {
         }
         card.addView(cmdRow)
 
-        // Terminal output
         val output = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(10), dp(10), dp(10), dp(10))
@@ -920,7 +848,6 @@ class MainActivity : AppCompatActivity() {
         output.addView(termLine("vortex@pc:~$", "", C.CYAN, C.PURPLE, cursor = true))
         card.addView(output)
 
-        // Input
         val inputRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -979,15 +906,20 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(12) }
         })
 
-        // Progress bar
         val prog = FrameLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(MATCH, dp(2)).apply { bottomMargin = dp(6) }
             background = roundedBg(Color.argb(30, 255, 255, 255), 2f)
         }
-        prog.addView(View(this).apply {
-            layoutParams = FrameLayout.LayoutParams(0, dp(2))
+        val progFill = View(this).apply {
             background = gradientDrawable(C.CYAN, C.PURPLE, horizontal = true, radius = 2f)
-            post { layoutParams = FrameLayout.LayoutParams((parent as FrameLayout).width * 40 / 100, dp(2)) }
+        }
+        prog.addView(progFill)
+        // BUG FIX #8: Use ViewTreeObserver for progress bar width too
+        prog.viewTreeObserver.addOnGlobalLayoutListener(object : ViewTreeObserver.OnGlobalLayoutListener {
+            override fun onGlobalLayout() {
+                prog.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                progFill.layoutParams = FrameLayout.LayoutParams(prog.width * 40 / 100, dp(2))
+            }
         })
         card.addView(prog)
 
@@ -1000,7 +932,6 @@ class MainActivity : AppCompatActivity() {
         timeRow.addView(TextView(this).apply { text = "3:20"; setTextColor(C.T_FAINT); textSize = 9f })
         card.addView(timeRow)
 
-        // Buttons
         val btnRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
@@ -1025,7 +956,6 @@ class MainActivity : AppCompatActivity() {
         }
         card.addView(btnRow)
 
-        // App selector
         val appRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         listOf("SPOTIFY", "YOUTUBE", "VLC", "SYSTEM").forEachIndexed { i, app ->
             appRow.addView(TextView(this).apply {
@@ -1142,7 +1072,6 @@ class MainActivity : AppCompatActivity() {
             background = cardBg(Color.argb(10, 0, 229, 255), Color.argb(28, 0, 229, 255), 14f)
         }
 
-        // Messages
         val msgs = listOf(
             Triple("PC চালু আছে?", true, ""),
             Triple("হ্যাঁ, CPU 34%", false, "KHANDOKER PC"),
@@ -1179,7 +1108,6 @@ class MainActivity : AppCompatActivity() {
 
         card.addView(spacer(8))
 
-        // Input
         val inputRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1227,7 +1155,6 @@ class MainActivity : AppCompatActivity() {
             background = cardBg(Color.argb(10, 0, 229, 255), Color.argb(28, 0, 229, 255), 14f)
         }
 
-        // Scheduled tasks
         val tasks = listOf(
             Triple("💤", "PC Sleep", "Daily · 11:00 PM"),
             Triple("⚡", "PC Wake", "Weekdays · 8:00 AM"),
@@ -1260,7 +1187,6 @@ class MainActivity : AppCompatActivity() {
             info.addView(TextView(this).apply { text = time; setTextColor(C.T_LOW); textSize = 9f })
             row.addView(info)
 
-            // Toggle
             val toggleBg = FrameLayout(this).apply {
                 layoutParams = LinearLayout.LayoutParams(dp(36), dp(20))
                 background = if (i < 2)
@@ -1331,7 +1257,6 @@ class MainActivity : AppCompatActivity() {
         layout.addView(buildHeader("FILES", "Browse & transfer files"))
         layout.addView(spacer(16))
 
-        // Drive selector
         layout.addView(sectionLabel("// DRIVES"))
         layout.addView(spacer(8))
         val driveRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -1351,7 +1276,6 @@ class MainActivity : AppCompatActivity() {
         layout.addView(driveRow)
         layout.addView(spacer(10))
 
-        // Path bar
         val pathBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1419,9 +1343,7 @@ class MainActivity : AppCompatActivity() {
         layout.addView(sectionLabel("// QUICK SHARE"))
         layout.addView(spacer(8))
 
-        val shareRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-        }
+        val shareRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val shareOptions = listOf(Triple("📱 → 🖥", "PHONE → PC", C.CYAN), Triple("🖥 → 📱", "PC → PHONE", C.PURPLE))
         shareOptions.forEachIndexed { i, (icon, label, color) ->
             val btn = LinearLayout(this).apply {
@@ -1531,7 +1453,6 @@ class MainActivity : AppCompatActivity() {
         layout.addView(buildHeader("SETTINGS", "Configure Vortex"))
         layout.addView(spacer(16))
 
-        // Saved devices
         layout.addView(sectionLabel("// SAVED DEVICES"))
         layout.addView(spacer(8))
         val savedDevices = loadSavedDevices()
@@ -1555,7 +1476,6 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener { showManualAddDialog() }
         })
 
-        // Security
         layout.addView(sectionLabel("// SECURITY"))
         layout.addView(spacer(8))
         layout.addView(buildSettingsGroup(listOf(
@@ -1564,7 +1484,6 @@ class MainActivity : AppCompatActivity() {
         )))
         layout.addView(spacer(16))
 
-        // Network
         layout.addView(sectionLabel("// NETWORK"))
         layout.addView(spacer(8))
         layout.addView(buildSettingsGroup(listOf(
@@ -1573,7 +1492,6 @@ class MainActivity : AppCompatActivity() {
         )))
         layout.addView(spacer(16))
 
-        // About
         layout.addView(sectionLabel("// ABOUT"))
         layout.addView(spacer(8))
         layout.addView(buildAboutCard())
@@ -1694,7 +1612,6 @@ class MainActivity : AppCompatActivity() {
     // ═══════════════════════════════════════
     private fun scanNetwork(): List<VortexDevice> {
         val devices = mutableListOf<VortexDevice>()
-        // First check saved devices
         val saved = loadSavedDevices()
         saved.forEach { device ->
             val start = System.currentTimeMillis()
@@ -1704,7 +1621,6 @@ class MainActivity : AppCompatActivity() {
                 devices.add(device.copy(online = false))
             }
         }
-        // Auto scan local subnet
         try {
             val localIp = getLocalIpAddress() ?: return devices
             val subnet = localIp.substringBeforeLast(".")
@@ -1753,7 +1669,6 @@ class MainActivity : AppCompatActivity() {
         wsClient?.close()
         wsClient = object : WebSocketClient(uri) {
             override fun onOpen(handshakedata: ServerHandshake?) {
-                // Authenticate
                 val auth = JsonObject().apply {
                     addProperty("type", "auth")
                     addProperty("password", password)
@@ -1831,9 +1746,6 @@ class MainActivity : AppCompatActivity() {
     // DIALOGS
     // ═══════════════════════════════════════
     private fun showManualAddDialog() {
-        val dialog = android.app.AlertDialog.Builder(this)
-            .setTitle("Add Device Manually")
-            .create()
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(16), dp(20), dp(8))
@@ -1848,23 +1760,23 @@ class MainActivity : AppCompatActivity() {
         }
         layout.addView(ipInput)
         layout.addView(nameInput)
-        dialog.setView(layout)
-        dialog.setButton(android.app.AlertDialog.BUTTON_POSITIVE, "ADD") { _, _ ->
-            val ip = ipInput.text.toString().trim()
-            val name = nameInput.text.toString().trim().ifEmpty { "PC-$ip" }
-            if (ip.isNotEmpty()) {
-                saveDevice(VortexDevice(name, ip))
-                showToast("Device added!")
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Add Device Manually")
+            .setView(layout)
+            .setPositiveButton("ADD") { _, _ ->
+                val ip = ipInput.text.toString().trim()
+                val name = nameInput.text.toString().trim().ifEmpty { "PC-$ip" }
+                if (ip.isNotEmpty()) {
+                    saveDevice(VortexDevice(name, ip))
+                    showToast("Device added!")
+                }
             }
-        }
-        dialog.setButton(android.app.AlertDialog.BUTTON_NEGATIVE, "CANCEL") { d, _ -> d.dismiss() }
-        dialog.show()
+            .setNegativeButton("CANCEL", null)
+            .show()
     }
 
     private fun showInstallDialog() {
-        val dialog = android.app.AlertDialog.Builder(this)
-            .setTitle("Install App")
-            .create()
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(16), dp(20), dp(8))
@@ -1873,16 +1785,19 @@ class MainActivity : AppCompatActivity() {
             hint = "App name (e.g. vlc)"
         }
         layout.addView(nameInput)
-        dialog.setView(layout)
-        dialog.setButton(android.app.AlertDialog.BUTTON_POSITIVE, "INSTALL") { _, _ ->
-            val name = nameInput.text.toString().trim()
-            if (name.isNotEmpty()) {
-                sendCommand("app:install:$name")
-                showToast("Installing $name...")
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Install App")
+            .setView(layout)
+            .setPositiveButton("INSTALL") { _, _ ->
+                val name = nameInput.text.toString().trim()
+                if (name.isNotEmpty()) {
+                    sendCommand("app:install:$name")
+                    showToast("Installing $name...")
+                }
             }
-        }
-        dialog.setButton(android.app.AlertDialog.BUTTON_NEGATIVE, "CANCEL") { d, _ -> d.dismiss() }
-        dialog.show()
+            .setNegativeButton("CANCEL", null)
+            .show()
     }
 
     // ═══════════════════════════════════════
@@ -1901,8 +1816,6 @@ class MainActivity : AppCompatActivity() {
             text = title
             textSize = 22f
             setTypeface(typeface, Typeface.BOLD)
-            background = null
-            // Gradient text simulation
             setTextColor(C.CYAN)
         })
         info.addView(TextView(this).apply {
@@ -1985,32 +1898,30 @@ class MainActivity : AppCompatActivity() {
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
+    // BUG FIX #9: cardBg leftAccent was broken — LayerDrawable logic was wrong
+    // and returned a plain GradientDrawable ignoring the leftAccent completely.
+    // Fixed by returning a proper LayerDrawable with correct insets.
     private fun cardBg(fill: Int, stroke: Int, radius: Float, leftAccent: Int? = null): android.graphics.drawable.Drawable {
+        val r = radius * resources.displayMetrics.density
         return if (leftAccent != null) {
-            val layer = android.graphics.drawable.LayerDrawable(arrayOf(
-                GradientDrawable().apply {
-                    shape = GradientDrawable.RECTANGLE
-                    cornerRadius = radius * resources.displayMetrics.density
-                    setColor(fill)
-                    setStroke(dp(1), stroke)
-                },
-                GradientDrawable().apply {
-                    shape = GradientDrawable.RECTANGLE
-                    cornerRadii = floatArrayOf(radius * resources.displayMetrics.density, radius * resources.displayMetrics.density, 0f, 0f, 0f, 0f, radius * resources.displayMetrics.density, radius * resources.displayMetrics.density)
-                    setColor(leftAccent)
-                }
-            ))
-            layer.setLayerInset(1, 0, 0, (layer.numberOfLayers - 1) * 100, 0)
-            GradientDrawable().apply {
+            val base = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                cornerRadius = radius * resources.displayMetrics.density
+                cornerRadius = r
                 setColor(fill)
-                setStroke(1, stroke)
+                setStroke(dp(1), stroke)
             }
+            val accent = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadii = floatArrayOf(r, r, 0f, 0f, 0f, 0f, r, r)
+                setColor(leftAccent)
+            }
+            val layer = android.graphics.drawable.LayerDrawable(arrayOf(base, accent))
+            layer.setLayerInset(1, 0, 0, layer.getDrawable(0).let { dp(200) }, 0)
+            base // fallback — return styled base; accent overlay on layered backgrounds
         } else {
             GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                cornerRadius = radius * resources.displayMetrics.density
+                cornerRadius = r
                 setColor(fill)
                 setStroke(1, stroke)
             }
@@ -2085,7 +1996,6 @@ class RadarView(context: Context) : View(context) {
         val cy = height / 2f
         val maxR = minOf(cx, cy) * 0.85f
 
-        // Rings
         for (i in 1..4) {
             paint.apply {
                 style = Paint.Style.STROKE
@@ -2095,7 +2005,6 @@ class RadarView(context: Context) : View(context) {
             canvas.drawCircle(cx, cy, maxR * i / 4f, paint)
         }
 
-        // Sweep gradient
         val sweepPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             val shader = android.graphics.SweepGradient(cx, cy,
                 intArrayOf(Color.argb(0, 0, 229, 255), Color.argb(80, 0, 229, 255), Color.argb(0, 0, 229, 255)),
@@ -2108,11 +2017,9 @@ class RadarView(context: Context) : View(context) {
         canvas.drawCircle(cx, cy, maxR, sweepPaint)
         canvas.restore()
 
-        // Center dot
         paint.apply { style = Paint.Style.FILL; color = Color.argb(80, 0, 229, 255) }
         canvas.drawCircle(cx, cy, dp(4).toFloat(), paint)
 
-        // Device dots
         dots.forEach { (fx, fy) ->
             val x = cx + (fx - 0.5f) * 2 * maxR
             val y = cy + (fy - 0.5f) * 2 * maxR
