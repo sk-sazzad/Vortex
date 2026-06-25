@@ -236,9 +236,11 @@ class NotificationMonitor:
         self.last_battery = None
         self.last_net = None
         self.usb_devices = set()
+        self.loop = None  # stored at start time
 
     def start(self):
         self.running = True
+        self.loop = asyncio.get_event_loop()  # capture loop from async context
         threading.Thread(target=self._monitor_loop, daemon=True).start()
 
     def _monitor_loop(self):
@@ -260,7 +262,7 @@ class NotificationMonitor:
             elif pct <= 20 and self.last_battery > 20:
                 asyncio.run_coroutine_threadsafe(
                     self.broadcast({"type": "notification", "event": "battery_low", "message": f"Battery low: {pct}%", "level": pct}),
-                    asyncio.get_event_loop()
+                    self.loop
                 )
             self.last_battery = pct
 
@@ -277,7 +279,7 @@ class NotificationMonitor:
             msg = "Internet restored" if net_ok else "Internet connection lost"
             asyncio.run_coroutine_threadsafe(
                 self.broadcast({"type": "notification", "event": event, "message": msg}),
-                asyncio.get_event_loop()
+                self.loop
             )
         self.last_net = net_ok
 
@@ -297,12 +299,12 @@ class NotificationMonitor:
         for dev in new_devices:
             asyncio.run_coroutine_threadsafe(
                 self.broadcast({"type": "notification", "event": "usb_connected", "message": f"USB device connected: {dev}"}),
-                asyncio.get_event_loop()
+                self.loop
             )
         for dev in removed:
             asyncio.run_coroutine_threadsafe(
                 self.broadcast({"type": "notification", "event": "usb_removed", "message": f"USB device removed: {dev}"}),
-                asyncio.get_event_loop()
+                self.loop
             )
         self.usb_devices = current
 
@@ -402,7 +404,10 @@ async def handle_client(websocket, path=None):
                     # CLIPBOARD
                     elif cmd.startswith("clipboard:set:"):
                         text = cmd[14:]
-                        subprocess.run(f'echo {text}| clip', shell=True)
+                        subprocess.run(
+                            ['powershell', '-Command', f'Set-Clipboard -Value "{text}"'],
+                            shell=False
+                        )
                         response = {"type": "clipboard_ok"}
 
                     elif cmd == "clipboard:get":
