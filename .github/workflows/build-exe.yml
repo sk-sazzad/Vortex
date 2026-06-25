@@ -19,30 +19,28 @@ jobs:
       - name: Install dependencies
         run: |
           cd agent
-          pip install -r requirements.txt
-          pip install pyinstaller
+          pip install websockets psutil Pillow pystray pyinstaller pyautogui
 
       - name: Build EXE
         run: |
           cd agent
-          pyinstaller --onefile --name "VortexAgent" `
+          pyinstaller --onefile --windowed --name "VortexAgent" `
             --hidden-import=websockets `
             --hidden-import=psutil `
-            --hidden-import=pycaw `
-            --hidden-import=comtypes `
-            --hidden-import=pyautogui `
+            --hidden-import=pystray `
             --hidden-import=PIL `
+            --hidden-import=tkinter `
+            --hidden-import=pyautogui `
             agent.py
 
-      - name: Upload EXE artifact
+      - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
           name: vortex-agent-exe
           path: agent/dist/VortexAgent.exe
 
-      - name: Add EXE to Release
+      - name: Add to Release
         uses: softprops/action-gh-release@v1
-        if: github.ref == 'refs/heads/main'
         with:
           tag_name: v1.0.${{ github.run_number }}
           name: "Vortex v1.0.${{ github.run_number }}"
