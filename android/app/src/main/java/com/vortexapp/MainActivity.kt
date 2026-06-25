@@ -24,6 +24,11 @@ import java.net.URI
 import java.util.concurrent.Executors
 
 // ═══════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════
+data class Quadruple<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
+
+// ═══════════════════════════════════════
 // COLORS
 // ═══════════════════════════════════════
 object C {
@@ -1049,10 +1054,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         val alerts = listOf(
-            Triple("⚡", "PC Online", "Khandoker PC started", C.GREEN),
-            Triple("🔌", "USB Connected", "USB Drive 32GB detected", C.AMBER),
-            Triple("⚠", "App Crashed", "chrome.exe stopped working", C.RED),
-            Triple("🌐", "Internet Restored", "Connection back online", C.CYAN)
+            Quadruple("⚡", "PC Online", "Khandoker PC started", C.GREEN),
+            Quadruple("🔌", "USB Connected", "USB Drive 32GB detected", C.AMBER),
+            Quadruple("⚠", "App Crashed", "chrome.exe stopped working", C.RED),
+            Quadruple("🌐", "Internet Restored", "Connection back online", C.CYAN)
         )
 
         alerts.forEach { (icon, title, body, color) ->
@@ -1151,7 +1156,7 @@ class MainActivity : AppCompatActivity() {
                 layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(6) }
             }
             if (!isOut && from.isNotEmpty()) {
-                wrap.addView(TextView(this).apply { text = from; setTextColor(C.T_FAINT); textSize = 8f })
+                wrap.addView(TextView(this).apply { this.text = from; setTextColor(C.T_FAINT); textSize = 8f })
                 wrap.addView(spacer(2))
             }
             val bubble = LinearLayout(this).apply {
@@ -1368,11 +1373,11 @@ class MainActivity : AppCompatActivity() {
         layout.addView(spacer(8))
 
         val files = listOf(
-            Triple("📁", "Desktop", "24 items", true),
-            Triple("📁", "Downloads", "142 items", true),
-            Triple("📁", "Documents", "38 items", true),
-            Triple("📄", "report_2026.pdf", "PDF · 2.4 MB", false),
-            Triple("📄", "notes.txt", "TXT · 14 KB", false)
+            Quadruple("📁", "Desktop", "24 items", true),
+            Quadruple("📁", "Downloads", "142 items", true),
+            Quadruple("📁", "Documents", "38 items", true),
+            Quadruple("📄", "report_2026.pdf", "PDF · 2.4 MB", false),
+            Quadruple("📄", "notes.txt", "TXT · 14 KB", false)
         )
 
         files.forEach { (icon, name, meta, isFolder) ->
@@ -2012,10 +2017,15 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun roundedBg(color: Int, radius: Float): android.graphics.drawable.Drawable {
+    private fun roundedBg(color: Int, radius: Float, topOnly: Boolean = false): android.graphics.drawable.Drawable {
+        val r = radius * resources.displayMetrics.density
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = radius * resources.displayMetrics.density
+            if (topOnly) {
+                cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f)
+            } else {
+                cornerRadius = r
+            }
             setColor(color)
         }
     }
