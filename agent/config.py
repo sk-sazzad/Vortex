@@ -5,7 +5,6 @@ import json
 import os
 import platform
 import tkinter as tk
-from tkinter import ttk, messagebox
 from pathlib import Path
 
 CONFIG_FILE = Path(__file__).parent / "config.json"
@@ -31,61 +30,76 @@ def show_setup():
     root.configure(bg="#030310")
     root.resizable(False, False)
 
-    # Center window
-    w, h = 400, 320
+    # Bigger window — button দেখা যাবে
+    w, h = 400, 420
     sw = root.winfo_screenwidth()
     sh = root.winfo_screenheight()
     root.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
 
-    style = ttk.Style()
-    style.configure("TEntry", foreground="white", background="#0a0a20")
+    frame = tk.Frame(root, bg="#030310", padx=30, pady=24)
+    frame.pack(fill="both", expand=True)
 
-    def label(parent, text, color="#ffffff", size=10, bold=False):
-        font = ("Consolas", size, "bold" if bold else "normal")
-        tk.Label(parent, text=text, fg=color, bg="#030310", font=font).pack(anchor="w", pady=(0, 2))
+    # Logo
+    tk.Label(frame, text="⚡  VORTEX AGENT", fg="#00e5ff", bg="#030310",
+            font=("Consolas", 15, "bold")).pack(pady=(0, 4))
+    tk.Label(frame, text="First-time setup", fg="#333355", bg="#030310",
+            font=("Consolas", 9)).pack(pady=(0, 24))
 
-    def entry_field(parent, default=""):
-        e = tk.Entry(parent, bg="#0a0a20", fg="white", insertbackground="cyan",
-                    font=("Consolas", 11), relief="flat", bd=0)
-        e.pack(fill="x", ipady=6, pady=(0, 12))
+    def label(text):
+        tk.Label(frame, text=text, fg="#555577", bg="#030310",
+                font=("Consolas", 8), anchor="w").pack(fill="x", pady=(0, 3))
+
+    def entry(default, show=None):
+        e = tk.Entry(frame, bg="#080818", fg="white",
+                    insertbackground="#00e5ff",
+                    font=("Consolas", 11), relief="flat", bd=0,
+                    highlightthickness=1,
+                    highlightbackground="#1a1a2e",
+                    highlightcolor="#00e5ff",
+                    show=show)
+        e.pack(fill="x", ipady=8, pady=(0, 16))
         e.insert(0, default)
         return e
 
-    frame = tk.Frame(root, bg="#030310", padx=30, pady=20)
-    frame.pack(fill="both", expand=True)
+    label("Device Name")
+    name_e = entry(config.get("device_name", platform.node()))
 
-    # Title
-    tk.Label(frame, text="⚡ VORTEX AGENT", fg="#00e5ff", bg="#030310",
-            font=("Consolas", 16, "bold")).pack(pady=(0, 4))
-    tk.Label(frame, text="First-time setup", fg="#444466", bg="#030310",
-            font=("Consolas", 9)).pack(pady=(0, 20))
+    label("Password")
+    pass_e = entry(config.get("password", "vortex123"))
 
-    # Fields
-    label(frame, "Device Name", color="#888899")
-    name_entry = entry_field(frame, config.get("device_name", platform.node()))
+    label("Port")
+    port_e = entry(str(config.get("port", 8765)))
 
-    label(frame, "Password", color="#888899")
-    pass_entry = entry_field(frame, config.get("password", "vortex123"))
-
-    label(frame, "Port", color="#888899")
-    port_entry = entry_field(frame, str(config.get("port", 8765)))
+    # Divider
+    tk.Frame(frame, bg="#1a1a2e", height=1).pack(fill="x", pady=(4, 16))
 
     def save():
-        config["device_name"] = name_entry.get().strip() or platform.node()
-        config["password"] = pass_entry.get().strip() or "vortex123"
+        config["device_name"] = name_e.get().strip() or platform.node()
+        config["password"] = pass_e.get().strip() or "vortex123"
         try:
-            config["port"] = int(port_entry.get().strip())
+            config["port"] = int(port_e.get().strip())
         except:
             config["port"] = 8765
         save_config(config)
         root.destroy()
 
-    # Save button
-    btn = tk.Button(frame, text="[ START AGENT ]", command=save,
-                   bg="#001a1f", fg="#00e5ff", activebackground="#002a35",
-                   activeforeground="#00e5ff", font=("Consolas", 11, "bold"),
-                   relief="flat", bd=0, padx=20, pady=8, cursor="hand2")
-    btn.pack(fill="x", pady=(4, 0))
+    # Button — clearly visible
+    btn = tk.Button(frame, text="[ START AGENT ]",
+                   command=save,
+                   bg="#001820", fg="#00e5ff",
+                   activebackground="#002a35",
+                   activeforeground="#00e5ff",
+                   font=("Consolas", 12, "bold"),
+                   relief="flat", bd=0,
+                   pady=12, cursor="hand2",
+                   highlightthickness=1,
+                   highlightbackground="#00e5ff")
+    btn.pack(fill="x", pady=(0, 8))
+
+    # Info text
+    tk.Label(frame, text=f"Will listen on port {config.get('port', 8765)}",
+            fg="#222244", bg="#030310",
+            font=("Consolas", 8)).pack()
 
     root.mainloop()
     return load_config()
