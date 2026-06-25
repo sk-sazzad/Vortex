@@ -20,13 +20,21 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: "8.3"
+
       - name: Grant execute permission for gradlew
         run: chmod +x android/gradlew
+
+      - name: Validate Gradle Wrapper
+        uses: gradle/wrapper-validation-action@v2
 
       - name: Build Debug APK
         run: |
           cd android
-          ./gradlew assembleDebug --no-daemon
+          gradle assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -36,18 +44,17 @@ jobs:
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
-        if: github.ref == 'refs/heads/main'
         with:
           tag_name: v1.0.${{ github.run_number }}
           name: "Vortex v1.0.${{ github.run_number }}"
           body: |
             ## Vortex Android App
 
-            ### Install করো
-            1. `app-debug.apk` download করো
-            2. Phone এ install করো
-            3. Agent চালু করো PC তে
-            4. App খোলো → Scan → Connect!
+            ### Install
+            1. Download `app-debug.apk`
+            2. Install on phone
+            3. Run VortexAgent.exe on PC
+            4. Scan → Connect!
           files: android/app/build/outputs/apk/debug/app-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
