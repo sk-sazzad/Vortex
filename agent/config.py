@@ -1,171 +1,94 @@
 """
-Vortex — Config Manager
-------------------------
-GUI popup দিয়ে password নেবো।
-Double click করলেও কাজ করবে।
+Vortex Config — First-time setup GUI
 """
-
 import json
 import os
-import hashlib
-import secrets
 import platform
-import sys
+import tkinter as tk
+from tkinter import ttk, messagebox
+from pathlib import Path
 
-CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+CONFIG_FILE = Path(__file__).parent / "config.json"
 
-DEFAULT_CONFIG = {
-    "password": "",
-    "server_port": 8765,
-    "device_name": platform.node(),
-    "device_id": secrets.token_hex(8),
-    "ddns": {
-        "enabled": False,
-        "hostname": "",
-        "provider": "noip",
-        "token": ""
+def load_config():
+    if CONFIG_FILE.exists():
+        with open(CONFIG_FILE) as f:
+            return json.load(f)
+    return {
+        "password": "vortex123",
+        "port": 8765,
+        "device_name": platform.node()
     }
-}
 
-def load_config() -> dict:
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, "r") as f:
-            config = json.load(f)
-        for key, value in DEFAULT_CONFIG.items():
-            if key not in config:
-                config[key] = value
-        return config
-    return DEFAULT_CONFIG.copy()
-
-def save_config(config: dict):
+def save_config(config):
     with open(CONFIG_FILE, "w") as f:
         json.dump(config, f, indent=2)
 
-def setup_first_time(config: dict) -> dict:
-    """GUI popup দিয়ে first time setup"""
-    try:
-        import tkinter as tk
-        from tkinter import messagebox, simpledialog
-        _setup_gui(config)
-    except Exception:
-        # Fallback — console এ নেবো
-        _setup_console(config)
-    return load_config()
-
-def _setup_gui(config: dict):
-    import tkinter as tk
-    from tkinter import ttk, messagebox
-
+def show_setup():
+    config = load_config()
     root = tk.Tk()
-    root.title("🌀 Vortex — First Time Setup")
-    root.geometry("420x480")
+    root.title("Vortex Agent Setup")
+    root.configure(bg="#030310")
     root.resizable(False, False)
-    root.configure(bg="#1a1a2e")
-    root.eval('tk::PlaceWindow . center')
+
+    # Center window
+    w, h = 400, 320
+    sw = root.winfo_screenwidth()
+    sh = root.winfo_screenheight()
+    root.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
+
+    style = ttk.Style()
+    style.configure("TEntry", foreground="white", background="#0a0a20")
+
+    def label(parent, text, color="#ffffff", size=10, bold=False):
+        font = ("Consolas", size, "bold" if bold else "normal")
+        tk.Label(parent, text=text, fg=color, bg="#030310", font=font).pack(anchor="w", pady=(0, 2))
+
+    def entry_field(parent, default=""):
+        e = tk.Entry(parent, bg="#0a0a20", fg="white", insertbackground="cyan",
+                    font=("Consolas", 11), relief="flat", bd=0)
+        e.pack(fill="x", ipady=6, pady=(0, 12))
+        e.insert(0, default)
+        return e
+
+    frame = tk.Frame(root, bg="#030310", padx=30, pady=20)
+    frame.pack(fill="both", expand=True)
 
     # Title
-    tk.Label(root, text="🌀 Vortex Agent", font=("Arial", 20, "bold"),
-             bg="#1a1a2e", fg="#4d9fff").pack(pady=(25, 5))
-    tk.Label(root, text="একবার setup করো, সবসময় কাজ করবে",
-             font=("Arial", 10), bg="#1a1a2e", fg="#888888").pack(pady=(0, 20))
+    tk.Label(frame, text="⚡ VORTEX AGENT", fg="#00e5ff", bg="#030310",
+            font=("Consolas", 16, "bold")).pack(pady=(0, 4))
+    tk.Label(frame, text="First-time setup", fg="#444466", bg="#030310",
+            font=("Consolas", 9)).pack(pady=(0, 20))
 
-    frame = tk.Frame(root, bg="#1a1a2e", padx=30)
-    frame.pack(fill="x")
+    # Fields
+    label(frame, "Device Name", color="#888899")
+    name_entry = entry_field(frame, config.get("device_name", platform.node()))
 
-    # Device name
-    tk.Label(frame, text="Device এর নাম:", font=("Arial", 11),
-             bg="#1a1a2e", fg="#ffffff", anchor="w").pack(fill="x", pady=(0,3))
-    name_var = tk.StringVar(value=config.get("device_name", platform.node()))
-    name_entry = tk.Entry(frame, textvariable=name_var, font=("Arial", 11),
-                          bg="#2a2a3e", fg="white", insertbackground="white",
-                          relief="flat", bd=8)
-    name_entry.pack(fill="x", pady=(0, 12))
+    label(frame, "Password", color="#888899")
+    pass_entry = entry_field(frame, config.get("password", "vortex123"))
 
-    # Password
-    tk.Label(frame, text="Password:", font=("Arial", 11),
-             bg="#1a1a2e", fg="#ffffff", anchor="w").pack(fill="x", pady=(0,3))
-    pass_var = tk.StringVar()
-    pass_entry = tk.Entry(frame, textvariable=pass_var, show="●",
-                          font=("Arial", 11), bg="#2a2a3e", fg="white",
-                          insertbackground="white", relief="flat", bd=8)
-    pass_entry.pack(fill="x", pady=(0, 12))
+    label(frame, "Port", color="#888899")
+    port_entry = entry_field(frame, str(config.get("port", 8765)))
 
-    # Confirm password
-    tk.Label(frame, text="Password আবার দাও:", font=("Arial", 11),
-             bg="#1a1a2e", fg="#ffffff", anchor="w").pack(fill="x", pady=(0,3))
-    confirm_var = tk.StringVar()
-    confirm_entry = tk.Entry(frame, textvariable=confirm_var, show="●",
-                             font=("Arial", 11), bg="#2a2a3e", fg="white",
-                             insertbackground="white", relief="flat", bd=8)
-    confirm_entry.pack(fill="x", pady=(0, 20))
-
-    status_lbl = tk.Label(frame, text="", font=("Arial", 10),
-                          bg="#1a1a2e", fg="#ff4444")
-    status_lbl.pack()
-
-    def on_save():
-        name = name_var.get().strip()
-        pwd  = pass_var.get().strip()
-        conf = confirm_var.get().strip()
-
-        if not name:
-            status_lbl.config(text="❌ Device এর নাম দাও!")
-            return
-        if len(pwd) < 4:
-            status_lbl.config(text="❌ কমপক্ষে ৪ অক্ষরের password দাও!")
-            return
-        if pwd != conf:
-            status_lbl.config(text="❌ Password মিলছে না!")
-            return
-
-        config["device_name"] = name
-        config["password"]    = hashlib.sha256(pwd.encode()).hexdigest()
+    def save():
+        config["device_name"] = name_entry.get().strip() or platform.node()
+        config["password"] = pass_entry.get().strip() or "vortex123"
+        try:
+            config["port"] = int(port_entry.get().strip())
+        except:
+            config["port"] = 8765
         save_config(config)
-        status_lbl.config(text="✅ Setup complete!", fg="#44ff88")
-        root.after(1000, root.destroy)
+        root.destroy()
 
-    save_btn = tk.Button(root, text="✅  Setup Complete",
-                         font=("Arial", 12, "bold"),
-                         bg="#4d9fff", fg="white", relief="flat",
-                         bd=0, padx=20, pady=10, cursor="hand2",
-                         command=on_save)
-    save_btn.pack(pady=15)
+    # Save button
+    btn = tk.Button(frame, text="[ START AGENT ]", command=save,
+                   bg="#001a1f", fg="#00e5ff", activebackground="#002a35",
+                   activeforeground="#00e5ff", font=("Consolas", 11, "bold"),
+                   relief="flat", bd=0, padx=20, pady=8, cursor="hand2")
+    btn.pack(fill="x", pady=(4, 0))
 
     root.mainloop()
+    return load_config()
 
-def _setup_console(config: dict):
-    """Console fallback"""
-    print("\n" + "="*40)
-    print("   🌀 Vortex Agent — First Time Setup")
-    print("="*40)
-
-    while True:
-        try:
-            password = input("Password: ").strip()
-        except Exception:
-            password = "vortex123"
-            break
-        if len(password) < 4:
-            print("❌ কমপক্ষে ৪ অক্ষরের password দাও!")
-            continue
-        try:
-            confirm = input("আবার দাও: ").strip()
-        except Exception:
-            confirm = password
-        if password != confirm:
-            print("❌ Password মিলছে না!")
-            continue
-        break
-
-    config["password"] = hashlib.sha256(password.encode()).hexdigest()
-    try:
-        name = input(f"Device এর নাম [{config['device_name']}]: ").strip()
-        if name:
-            config["device_name"] = name
-    except Exception:
-        pass
-    save_config(config)
-    print("✅ Setup complete!")
-
-def get_password_hash(config: dict) -> str:
-    return config.get("password", "")
+if __name__ == "__main__":
+    show_setup()

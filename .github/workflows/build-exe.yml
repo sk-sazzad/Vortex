@@ -1,62 +1,44 @@
-name: Build Windows Agent (.exe)
+name: Build Windows Agent EXE
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
-  build-exe:
+  build:
     runs-on: windows-latest
-
     steps:
-      - name: 📥 Code download করো
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: 🐍 Python setup করো
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: 📦 Dependencies install করো
-        run: |
-          pip install -r agent/requirements.txt
-          pip install pyinstaller
-
-      - name: 🔨 .exe বানাও
+      - name: Install dependencies
         run: |
           cd agent
-          pyinstaller --onefile --noconsole --name "Vortex-Agent" agent.py
+          pip install -r requirements.txt
+          pip install pyinstaller
 
-      - name: 🏷️ Version তৈরি করো
-        id: version
-        run: echo "tag=v1.0.${{ github.run_number }}" >> $env:GITHUB_OUTPUT
+      - name: Build EXE
+        run: |
+          cd agent
+          pyinstaller --onefile --name "VortexAgent" --hidden-import=websockets --hidden-import=psutil agent.py
 
-      - name: 🚀 Auto Release করো
-        uses: softprops/action-gh-release@v2
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: "🌀 Vortex ${{ steps.version.outputs.tag }}"
-          body: |
-            ## 🌀 Vortex Agent — Windows
+          name: vortex-agent-exe
+          path: agent/dist/VortexAgent.exe
 
-            ### 📥 Install করো
-            1. `Vortex-Agent.exe` download করো
-            2. Double click করে চালাও
-            3. প্রথমবার password set করো
-            4. Android App দিয়ে Scan করো → Connect!
-
-            ### ✅ Features
-            - Auto Discovery (IP লাগবে না)
-            - Remote Shutdown / Restart / Sleep
-            - Volume Control
-            - Screenshot
-            - Terminal Command
-            - File Browser
-            - System Info
-            - Clipboard Sync
-          files: agent/dist/Vortex-Agent.exe
-          draft: false
-          prerelease: false
+      - name: Add EXE to Release
+        uses: softprops/action-gh-release@v1
+        if: github.ref == 'refs/heads/main'
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: "Vortex v1.0.${{ github.run_number }}"
+          files: agent/dist/VortexAgent.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
