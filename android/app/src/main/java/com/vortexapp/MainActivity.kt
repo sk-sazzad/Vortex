@@ -78,6 +78,13 @@ class MainActivity : AppCompatActivity() {
     private var wsClient: WebSocketClient? = null
     private var connectedDevice: VortexDevice? = null
     private var currentTab = 0
+    private var statsRunnable: Runnable? = null  // for cancelling stats poll
+
+    // Files tab state
+    private var driveRowLayout: LinearLayout? = null
+    private var fileListLayout: LinearLayout? = null
+    private var currentPath: String = "C:\\"
+    private var pathBarText: TextView? = null
 
     // Live stats — real data from agent
     private var statCpuText: android.widget.TextView? = null
@@ -705,16 +712,16 @@ class MainActivity : AppCompatActivity() {
 
         // Request stats immediately
         handler.postDelayed({ sendCommand("stats") }, 500)
-        // Poll every 3 seconds
-        val statsRunnable = object : Runnable {
+        // Poll every 3 seconds — cancel on disconnect
+        statsRunnable = object : Runnable {
             override fun run() {
-                if (connectedDevice != null) {
+                if (connectedDevice != null && currentTab == 1) {
                     sendCommand("stats")
                     handler.postDelayed(this, 3000)
                 }
             }
         }
-        handler.postDelayed(statsRunnable, 3000)
+        handler.postDelayed(statsRunnable!!, 3000)
 
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1267,9 +1274,8 @@ class MainActivity : AppCompatActivity() {
         layout.addView(sectionLabel("// DRIVES"))
         layout.addView(spacer(8))
         val driveRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        driveRowLayout = driveRow  // real reference
         layout.addView(driveRow)
-        // Request drives from agent
-        sendCommand("drives")
         layout.addView(spacer(10))
 
         val pathBar = LinearLayout(this).apply {
@@ -1281,59 +1287,32 @@ class MainActivity : AppCompatActivity() {
         }
         pathBar.addView(TextView(this).apply { text = "🏠"; textSize = 12f })
         pathBar.addView(spacer(6, horizontal = true))
-        pathBar.addView(TextView(this).apply {
-            text = "C:\\Users\\Khandoker"
+        val pathText = TextView(this).apply {
+            text = "Loading..."
             setTextColor(Color.argb(120, 0, 229, 255))
             textSize = 10f
             typeface = Typeface.MONOSPACE
-        })
+        }
+        pathBarText = pathText  // real reference
+        pathBar.addView(pathText)
         layout.addView(pathBar)
 
         layout.addView(sectionLabel("// FILE BROWSER"))
         layout.addView(spacer(8))
 
-        val files = listOf(
-            Quadruple("📁", "Desktop", "24 items", true),
-            Quadruple("📁", "Downloads", "142 items", true),
-            Quadruple("📁", "Documents", "38 items", true),
-            Quadruple("📄", "report_2026.pdf", "PDF · 2.4 MB", false),
-            Quadruple("📄", "notes.txt", "TXT · 14 KB", false)
-        )
+        // Real file list — filled by agent response
+        val fileList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        fileList.addView(TextView(this).apply {
+            text = "Loading files..."
+            setTextColor(C.T_FAINT); textSize = 11f; gravity = Gravity.CENTER
+            setPadding(0, dp(16), 0, dp(16))
+        })
+        fileListLayout = fileList  // real reference
+        layout.addView(fileList)
 
-        files.forEach { (icon, name, meta, isFolder) ->
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, dp(10), 0, dp(10))
-            }
-
-            val iconBox = frameBox(dp(28), dp(28),
-                if (isFolder) Color.argb(25, 0, 229, 255) else Color.argb(25, 191, 95, 255),
-                if (isFolder) Color.argb(55, 0, 229, 255) else Color.argb(55, 191, 95, 255), 8f)
-            iconBox.addView(TextView(this).apply { text = icon; textSize = 13f; gravity = Gravity.CENTER })
-            row.addView(iconBox)
-            row.addView(spacer(10, horizontal = true))
-
-            val info = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
-            }
-            info.addView(TextView(this).apply { text = name; setTextColor(C.T_HIGH); textSize = 11f })
-            info.addView(TextView(this).apply { text = meta; setTextColor(C.T_FAINT); textSize = 9f })
-            row.addView(info)
-
-            row.addView(TextView(this).apply {
-                text = if (isFolder) "›" else "⬇"
-                setTextColor(Color.argb(60, 0, 229, 255))
-                textSize = if (isFolder) 18f else 14f
-            })
-
-            layout.addView(row)
-            layout.addView(View(this).apply {
-                setBackgroundColor(Color.argb(15, 255, 255, 255))
-                layoutParams = LinearLayout.LayoutParams(MATCH, 1)
-            })
-        }
+        // Request drives from agent
+        if (connectedDevice != null) sendCommand("drives")
+        else layout.addView(emptyState("Not connected", "Connect to a PC to browse files"))
 
         layout.addView(spacer(16))
         layout.addView(sectionLabel("// QUICK SHARE"))
@@ -1729,6 +1708,8 @@ class MainActivity : AppCompatActivity() {
             override fun onClose(code: Int, reason: String?, remote: Boolean) {
                 handler.post {
                     connectedDevice = null
+                    statsRunnable?.let { handler.removeCallbacks(it) }
+                    statsRunnable = null
                     showToast("Disconnected")
                     showTab(0)
                 }
@@ -1802,15 +1783,145 @@ class MainActivity : AppCompatActivity() {
                     try {
                         val bytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
                         val bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                        // Save to gallery
-                        val fname = "vortex_screenshot_${System.currentTimeMillis()}.jpg"
-                        val fos = openFileOutput(fname, Context.MODE_PRIVATE)
-                        bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, fos)
-                        fos.close()
-                        showToast("Screenshot saved!")
+                        // BUG #4 FIX — Save to Gallery via MediaStore
+                        val values = android.content.ContentValues().apply {
+                            put(android.provider.MediaStore.Images.Media.DISPLAY_NAME,
+                                "vortex_${System.currentTimeMillis()}.jpg")
+                            put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                            put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Vortex")
+                        }
+                        val uri = contentResolver.insert(
+                            android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                        uri?.let {
+                            contentResolver.openOutputStream(it)?.use { os ->
+                                bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, os)
+                            }
+                        }
+                        showToast("Screenshot saved to Gallery!")
                     } catch (e: Exception) {
                         showToast("Screenshot error: ${e.message}")
                     }
+                }
+                // BUG #1 FIX — drives_list response
+                "drives_list" -> {
+                    try {
+                        val drives = json.getAsJsonArray("drives")
+                        val row = driveRowLayout ?: return@post
+                        row.removeAllViews()
+                        drives.forEachIndexed { i, el ->
+                            val drive = el.asJsonObject
+                            val mountpoint = drive.get("mountpoint")?.asString ?: return@forEachIndexed
+                            val free = drive.get("free")?.asFloat ?: 0f
+                            val total = drive.get("total")?.asFloat ?: 0f
+                            val label = "$mountpoint (${free.toInt()}/${total.toInt()}GB)"
+                            val btn = TextView(this).apply {
+                                text = label
+                                setTextColor(if (i == 0) C.CYAN else Color.argb(80, 0, 229, 255))
+                                textSize = 10f
+                                setPadding(dp(12), dp(7), dp(12), dp(7))
+                                background = if (i == 0)
+                                    cardBg(Color.argb(40, 0, 229, 255), Color.argb(100, 0, 229, 255), 8f)
+                                else
+                                    cardBg(Color.argb(10, 0, 229, 255), Color.argb(25, 0, 229, 255), 8f)
+                                layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(8) }
+                                setOnClickListener {
+                                    currentPath = mountpoint
+                                    pathBarText?.text = mountpoint
+                                    sendCommand("files:list:$mountpoint")
+                                }
+                            }
+                            row.addView(btn)
+                        }
+                        // Load default path
+                        val firstMount = drives.firstOrNull()?.asJsonObject?.get("mountpoint")?.asString ?: "C:\"
+                        currentPath = firstMount
+                        sendCommand("files:list:$firstMount")
+                    } catch (e: Exception) { showToast("Drives error: ${e.message}") }
+                }
+                // BUG #2 FIX — files_list response
+                "files_list" -> {
+                    try {
+                        val path = json.get("path")?.asString ?: ""
+                        val items = json.getAsJsonArray("items")
+                        val listLayout = fileListLayout ?: return@post
+                        listLayout.removeAllViews()
+                        pathBarText?.text = path
+                        currentPath = path
+
+                        // Parent dir button
+                        if (path.length > 3) {
+                            val parentPath = java.io.File(path).parent ?: "C:\"
+                            val upRow = LinearLayout(this).apply {
+                                orientation = LinearLayout.HORIZONTAL
+                                gravity = Gravity.CENTER_VERTICAL
+                                setPadding(0, dp(10), 0, dp(10))
+                                setOnClickListener { sendCommand("files:list:$parentPath") }
+                            }
+                            upRow.addView(TextView(this).apply { text = "⬆"; textSize = 14f; setTextColor(C.CYAN) })
+                            upRow.addView(spacer(10, horizontal = true))
+                            upRow.addView(TextView(this).apply { text = "..  (go up)"; setTextColor(C.T_LOW); textSize = 11f })
+                            listLayout.addView(upRow)
+                            listLayout.addView(View(this).apply {
+                                setBackgroundColor(Color.argb(15, 255, 255, 255))
+                                layoutParams = LinearLayout.LayoutParams(MATCH, 1)
+                            })
+                        }
+
+                        if (items.size() == 0) {
+                            listLayout.addView(TextView(this).apply {
+                                text = "Empty folder"
+                                setTextColor(C.T_FAINT)
+                                textSize = 11f
+                                gravity = Gravity.CENTER
+                                setPadding(0, dp(16), 0, dp(16))
+                            })
+                        }
+
+                        items.forEach { el ->
+                            val item = el.asJsonObject
+                            val name    = item.get("name")?.asString ?: return@forEach
+                            val itemPath = item.get("path")?.asString ?: return@forEach
+                            val isDir   = item.get("is_dir")?.asBoolean ?: false
+                            val size    = item.get("size")?.asLong ?: 0L
+                            val meta    = if (isDir) "Folder" else "${size / 1024}KB"
+                            val color   = if (isDir) C.CYAN else C.PURPLE
+
+                            val row = LinearLayout(this).apply {
+                                orientation = LinearLayout.HORIZONTAL
+                                gravity = Gravity.CENTER_VERTICAL
+                                setPadding(0, dp(10), 0, dp(10))
+                                setOnClickListener {
+                                    if (isDir) sendCommand("files:list:$itemPath")
+                                    else showToast("File: $name")
+                                }
+                            }
+                            val iconBox = frameBox(dp(28), dp(28),
+                                Color.argb(25, Color.red(color), Color.green(color), Color.blue(color)),
+                                Color.argb(55, Color.red(color), Color.green(color), Color.blue(color)), 8f)
+                            iconBox.addView(TextView(this).apply {
+                                text = if (isDir) "📁" else "📄"; textSize = 13f; gravity = Gravity.CENTER
+                            })
+                            row.addView(iconBox)
+                            row.addView(spacer(10, horizontal = true))
+                            val info = LinearLayout(this).apply {
+                                orientation = LinearLayout.VERTICAL
+                                layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
+                            }
+                            info.addView(TextView(this).apply { text = name; setTextColor(C.T_HIGH); textSize = 11f })
+                            info.addView(TextView(this).apply { text = meta; setTextColor(C.T_FAINT); textSize = 9f })
+                            row.addView(info)
+                            row.addView(TextView(this).apply {
+                                text = if (isDir) "›" else "⬇"
+                                setTextColor(Color.argb(60, 0, 229, 255))
+                                textSize = if (isDir) 18f else 14f
+                            })
+                            listLayout.addView(row)
+                            listLayout.addView(View(this).apply {
+                                setBackgroundColor(Color.argb(15, 255, 255, 255))
+                                layoutParams = LinearLayout.LayoutParams(MATCH, 1)
+                            })
+                        }
+                    } catch (e: Exception) { showToast("Files error: ${e.message}") }
                 }
             }
         }

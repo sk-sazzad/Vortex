@@ -55,16 +55,6 @@ def show_notification(title, msg):
     except:
         pass
 
-def is_autostart():
-    try:
-        import winreg
-        k = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
-                          r"Software\Microsoft\Windows\CurrentVersion\Run")
-        winreg.QueryValueEx(k, "VortexAgent")
-        return True
-    except:
-        return False
-
 def set_autostart(enable):
     try:
         import winreg
@@ -246,10 +236,10 @@ class Monitor:
                              shell=True, capture_output=True, text=True)
             cur = set()
             for line in r.stdout.splitlines():
-                if "2" in line:
-                    parts = line.split()
-                    if parts:
-                        cur.add(parts[0])
+                parts = line.split()
+                # BUG #10 FIX: exact match drivetype==2 (removable)
+                if len(parts) >= 2 and parts[1].strip() == "2":
+                    cur.add(parts[0])
             for d in cur - self.usbs:
                 self._notify({"type": "notification", "event": "usb_in",
                              "message": f"USB connected: {d}"})
