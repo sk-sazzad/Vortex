@@ -9,8 +9,8 @@ android {
         applicationId "com.vortexapp"
         minSdk rootProject.ext.minSdkVersion
         targetSdk rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode System.getenv("BUILD_NUMBER") ? System.getenv("BUILD_NUMBER").toInteger() : 1
+        versionName System.getenv("VERSION_NAME") ?: "1.0"
     }
 
     buildTypes {

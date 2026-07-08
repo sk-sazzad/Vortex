@@ -59,7 +59,8 @@ data class VortexDevice(
     val port: Int = 8765,
     var online: Boolean = false,
     var ping: Long = 0L,
-    var os: String = "Windows"
+    var os: String = "Windows",
+    var savedPassword: String = ""  // saved password for auto-connect
 )
 
 // ═══════════════════════════════════════
@@ -388,10 +389,14 @@ class MainActivity : AppCompatActivity() {
         return btn
     }
 
-    private fun showAuthDialog(device: VortexDevice) {
-        // BUG FIX #5: Use AlertDialog instead of fullscreen Dialog to avoid crash
-        // on certain Android versions where Theme_Black_NoTitleBar_Fullscreen behaves
-        // differently and causes WindowManager exceptions
+    private fun showAuthDialog(device: VortexDevice, forcePasswordPrompt: Boolean = false) {
+        // Saved password থাকলে সরাসরি connect — password চাইবে না
+        val saved = loadSavedDevices().find { it.ip == device.ip }
+        if (!forcePasswordPrompt && saved?.savedPassword?.isNotEmpty() == true) {
+            connectToDevice(device, saved.savedPassword)
+            return
+        }
+
         val dialogLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(20), dp(20), dp(20))
@@ -1727,7 +1732,7 @@ class MainActivity : AppCompatActivity() {
                 message ?: return
                 try {
                     val json = gson.fromJson(message, JsonObject::class.java)
-                    handleMessage(json, device)
+                    handleMessage(json, device, password)  // password pass করো
                 } catch (e: Exception) { }
             }
             override fun onClose(code: Int, reason: String?, remote: Boolean) {
@@ -1744,17 +1749,21 @@ class MainActivity : AppCompatActivity() {
         wsClient?.connect()
     }
 
-    private fun handleMessage(json: JsonObject, device: VortexDevice) {
+    private fun handleMessage(json: JsonObject, device: VortexDevice, password: String) {
         val type = json.get("type")?.asString ?: return
         handler.post {
             when (type) {
                 "auth_ok" -> {
                     connectedDevice = device
-                    saveDevice(device)
+                    saveDeviceWithPassword(device, password)  // password save করো
                     showToast("Connected to ${device.name}!")
                     showTab(1)
                 }
-                "auth_fail" -> showToast("Wrong password!")
+                "auth_fail" -> {
+                    showToast("Wrong password!")
+                    // Password ভুল — force password prompt দেখাও
+                    showAuthDialog(device, forcePasswordPrompt = true)
+                }
                 "stats" -> { /* update stats */ }
                 "notification" -> showToast(json.get("message")?.asString ?: "")
             }
@@ -1774,12 +1783,19 @@ class MainActivity : AppCompatActivity() {
     // ═══════════════════════════════════════
     // STORAGE
     // ═══════════════════════════════════════
+    private fun saveDeviceWithPassword(device: VortexDevice, password: String) {
+        val devices = loadSavedDevices().toMutableList()
+        val idx = devices.indexOfFirst { it.ip == device.ip }
+        val updated = device.copy(savedPassword = password)
+        if (idx == -1) devices.add(updated) else devices[idx] = updated
+        prefs.edit().putString("saved_devices", gson.toJson(devices)).apply()
+    }
+
     private fun saveDevice(device: VortexDevice) {
         val devices = loadSavedDevices().toMutableList()
-        if (devices.none { it.ip == device.ip }) {
-            devices.add(device)
-            prefs.edit().putString("saved_devices", gson.toJson(devices)).apply()
-        }
+        val idx = devices.indexOfFirst { it.ip == device.ip }
+        if (idx == -1) devices.add(device) else devices[idx] = device
+        prefs.edit().putString("saved_devices", gson.toJson(devices)).apply()
     }
 
     private fun loadSavedDevices(): List<VortexDevice> {
