@@ -119,9 +119,9 @@ def handle_media(action):
         if key:
             ctypes.windll.user32.keybd_event(key, 0, 0, 0)
             ctypes.windll.user32.keybd_event(key, 0, 2, 0)
+        return {"type": "media_ok", "action": action}
     except Exception as e:
         return {"type": "error", "msg": str(e)}
-    return {"type": "media_ok", "action": action}
 
 def get_stats():
     cpu = psutil.cpu_percent(interval=0.1)
@@ -278,7 +278,9 @@ async def handle_client(websocket, path=None):
                 t = data.get("type", "")
 
                 if t == "auth":
-                    if data.get("password") == CONFIG["password"]:
+                    fresh = load_config()
+                    if data.get("password") == fresh.get("password", CONFIG["password"]):
+                        CONFIG.update(fresh)  # config sync করো
                         authed = True
                         authenticated_clients.add(websocket)
                         show_notification("Vortex", "Phone connected!")

@@ -79,6 +79,21 @@ class MainActivity : AppCompatActivity() {
     private var connectedDevice: VortexDevice? = null
     private var currentTab = 0
 
+    // Live stats — real data from agent
+    private var statCpuText: android.widget.TextView? = null
+    private var statRamText: android.widget.TextView? = null
+    private var statDiskText: android.widget.TextView? = null
+    private var statNetText: android.widget.TextView? = null
+
+    // Shell output
+    private var shellOutputLayout: LinearLayout? = null
+
+    // Alerts list
+    private var alertsLayout: LinearLayout? = null
+
+    // Notifications list
+    private val notificationList = mutableListOf<Triple<String,String,Int>>()
+
     // UI containers
     private lateinit var root: FrameLayout
     private lateinit var mainContainer: LinearLayout
@@ -666,27 +681,40 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(6) }
         }
-        val row2 = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-        }
 
-        val stats1 = listOf(
-            Triple("34%", "CPU", C.CYAN),
-            Triple("61%", "RAM", C.PURPLE),
-            Triple("48%", "DISK", C.GREEN)
-        )
-        val stats2 = listOf(
-            Triple("28%", "GPU", C.AMBER),
-            Triple("52°", "TEMP", Color.parseColor("#ff5080")),
-            Triple("↓48", "MB/s", C.AMBER)
-        )
+        // CPU card
+        val cpuCard = buildStatCard("0%", "CPU", C.CYAN, true)
+        statCpuText = cpuCard.getChildAt(0) as? android.widget.TextView
+        row1.addView(cpuCard)
 
-        stats1.forEachIndexed { i, (val_, lbl, clr) ->
-            row1.addView(buildStatCard(val_, lbl, clr, i < 2))
+        // RAM card
+        val ramCard = buildStatCard("0%", "RAM", C.PURPLE, true)
+        statRamText = ramCard.getChildAt(0) as? android.widget.TextView
+        row1.addView(ramCard)
+
+        // DISK card
+        val diskCard = buildStatCard("0%", "DISK", C.GREEN, false)
+        statDiskText = diskCard.getChildAt(0) as? android.widget.TextView
+        row1.addView(diskCard)
+
+        // Net card
+        val row2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val netCard = buildStatCard("0MB/s", "NETWORK", C.AMBER, false)
+        statNetText = netCard.getChildAt(0) as? android.widget.TextView
+        row2.addView(netCard)
+
+        // Request stats immediately
+        handler.postDelayed({ sendCommand("stats") }, 500)
+        // Poll every 3 seconds
+        val statsRunnable = object : Runnable {
+            override fun run() {
+                if (connectedDevice != null) {
+                    sendCommand("stats")
+                    handler.postDelayed(this, 3000)
+                }
+            }
         }
-        stats2.forEachIndexed { i, (val_, lbl, clr) ->
-            row2.addView(buildStatCard(val_, lbl, clr, i < 2))
-        }
+        handler.postDelayed(statsRunnable, 3000)
 
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -846,11 +874,9 @@ class MainActivity : AppCompatActivity() {
             background = roundedBg(Color.parseColor("#01010a"), 8f)
             layoutParams = LinearLayout.LayoutParams(MATCH, dp(120)).apply { bottomMargin = dp(10) }
         }
-        output.addView(termLine("vortex@pc:~$", "ipconfig", C.CYAN, C.PURPLE))
-        output.addView(termOutput("IPv4: 192.168.0.100"))
-        output.addView(termOk("✓ Done in 0.2s"))
-        output.addView(spacer(4))
         output.addView(termLine("vortex@pc:~$", "", C.CYAN, C.PURPLE, cursor = true))
+        output.addView(termOutput("Ready — send a command"))
+        shellOutputLayout = output  // real output reference
         card.addView(output)
 
         val inputRow = LinearLayout(this).apply {
@@ -988,40 +1014,16 @@ class MainActivity : AppCompatActivity() {
             background = cardBg(Color.argb(10, 0, 229, 255), Color.argb(28, 0, 229, 255), 14f)
         }
 
-        val alerts = listOf(
-            Quadruple("⚡", "PC Online", "Khandoker PC started", C.GREEN),
-            Quadruple("🔌", "USB Connected", "USB Drive 32GB detected", C.AMBER),
-            Quadruple("⚠", "App Crashed", "chrome.exe stopped working", C.RED),
-            Quadruple("🌐", "Internet Restored", "Connection back online", C.CYAN)
-        )
+        alertsLayout = card  // real reference for live updates
 
-        alerts.forEach { (icon, title, body, color) ->
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, dp(8), 0, dp(8))
-            }
-            val iconBox = frameBox(dp(28), dp(28),
-                Color.argb(30, Color.red(color), Color.green(color), Color.blue(color)),
-                Color.argb(60, Color.red(color), Color.green(color), Color.blue(color)), 8f)
-            iconBox.addView(TextView(this).apply { text = icon; textSize = 12f; gravity = Gravity.CENTER })
-            row.addView(iconBox)
-            row.addView(spacer(10, horizontal = true))
-
-            val info = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
-            }
-            info.addView(TextView(this).apply { text = title; setTextColor(C.T_HIGH); textSize = 11f; setTypeface(typeface, Typeface.BOLD) })
-            info.addView(TextView(this).apply { text = body; setTextColor(C.T_LOW); textSize = 9f })
-            row.addView(info)
-
-            card.addView(row)
-            card.addView(View(this).apply {
-                setBackgroundColor(Color.argb(15, 255, 255, 255))
-                layoutParams = LinearLayout.LayoutParams(MATCH, 1)
-            })
-        }
+        // Empty state — real alerts আসলে এটা replace হবে
+        card.addView(TextView(this).apply {
+            text = "Waiting for alerts..."
+            setTextColor(C.T_FAINT)
+            textSize = 10f
+            gravity = Gravity.CENTER
+            setPadding(0, dp(12), 0, dp(12))
+        })
 
         return card
     }
@@ -1265,20 +1267,9 @@ class MainActivity : AppCompatActivity() {
         layout.addView(sectionLabel("// DRIVES"))
         layout.addView(spacer(8))
         val driveRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        listOf("C:\\", "D:\\", "E:\\").forEachIndexed { i, drive ->
-            driveRow.addView(TextView(this).apply {
-                text = drive
-                setTextColor(if (i == 0) C.CYAN else Color.argb(80, 0, 229, 255))
-                textSize = 11f
-                setPadding(dp(14), dp(8), dp(14), dp(8))
-                background = if (i == 0)
-                    cardBg(Color.argb(40, 0, 229, 255), Color.argb(100, 0, 229, 255), 8f)
-                else
-                    cardBg(Color.argb(10, 0, 229, 255), Color.argb(25, 0, 229, 255), 8f)
-                layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(8) }
-            })
-        }
         layout.addView(driveRow)
+        // Request drives from agent
+        sendCommand("drives")
         layout.addView(spacer(10))
 
         val pathBar = LinearLayout(this).apply {
@@ -1755,18 +1746,120 @@ class MainActivity : AppCompatActivity() {
             when (type) {
                 "auth_ok" -> {
                     connectedDevice = device
-                    saveDeviceWithPassword(device, password)  // password save করো
+                    saveDeviceWithPassword(device, password)
                     showToast("Connected to ${device.name}!")
                     showTab(1)
                 }
                 "auth_fail" -> {
                     showToast("Wrong password!")
-                    // Password ভুল — force password prompt দেখাও
                     showAuthDialog(device, forcePasswordPrompt = true)
                 }
-                "stats" -> { /* update stats */ }
-                "notification" -> showToast(json.get("message")?.asString ?: "")
+                "stats" -> {
+                    // Real stats update
+                    val cpu  = json.get("cpu")?.asFloat ?: 0f
+                    val ram  = json.get("ram")?.asFloat ?: 0f
+                    val disk = json.get("disk")?.asFloat ?: 0f
+                    val sent = json.get("net_sent")?.asFloat ?: 0f
+                    val recv = json.get("net_recv")?.asFloat ?: 0f
+                    statCpuText?.text  = "${cpu.toInt()}%"
+                    statRamText?.text  = "${ram.toInt()}%"
+                    statDiskText?.text = "${disk.toInt()}%"
+                    statNetText?.text  = "↓${recv.toInt()}MB"
+                }
+                "shell_result" -> {
+                    val out = json.get("stdout")?.asString ?: ""
+                    val err = json.get("stderr")?.asString ?: ""
+                    val combined = if (out.isNotEmpty()) out else if (err.isNotEmpty()) "Error: $err" else "Done"
+                    updateShellOutput(combined)
+                }
+                "notification" -> {
+                    val msg   = json.get("message")?.asString ?: return@post
+                    val event = json.get("event")?.asString ?: "info"
+                    showToast(msg)
+                    val color = when {
+                        event.contains("battery") -> C.AMBER
+                        event.contains("usb")     -> C.CYAN
+                        event.contains("internet")-> C.GREEN
+                        else                      -> C.T_MED
+                    }
+                    val icon = when {
+                        event.contains("battery") -> "🔋"
+                        event.contains("usb_in")  -> "🔌"
+                        event.contains("usb_out") -> "⏏"
+                        event.contains("internet")-> "🌐"
+                        else                      -> "⚡"
+                    }
+                    addAlert(icon, event, msg, color)
+                }
+                "clipboard_content" -> {
+                    val text = json.get("text")?.asString ?: return@post
+                    val cm = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("vortex", text))
+                    showToast("Clipboard synced!")
+                }
+                "screenshot" -> {
+                    val b64 = json.get("data")?.asString ?: return@post
+                    try {
+                        val bytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
+                        val bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                        // Save to gallery
+                        val fname = "vortex_screenshot_${System.currentTimeMillis()}.jpg"
+                        val fos = openFileOutput(fname, Context.MODE_PRIVATE)
+                        bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, fos)
+                        fos.close()
+                        showToast("Screenshot saved!")
+                    } catch (e: Exception) {
+                        showToast("Screenshot error: ${e.message}")
+                    }
+                }
             }
+        }
+    }
+
+    private fun updateShellOutput(text: String) {
+        val layout = shellOutputLayout ?: return
+        handler.post {
+            layout.removeAllViews()
+            text.lines().takeLast(8).forEach { line ->
+                layout.addView(TextView(this).apply {
+                    this.text = "  $line"
+                    setTextColor(Color.argb(180, 200, 255, 200))
+                    textSize = 8f
+                    typeface = Typeface.MONOSPACE
+                })
+            }
+        }
+    }
+
+    private fun addAlert(icon: String, title: String, body: String, color: Int) {
+        val layout = alertsLayout ?: return
+        handler.post {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(8), 0, dp(8))
+            }
+            val iconBox = frameBox(dp(28), dp(28),
+                Color.argb(30, Color.red(color), Color.green(color), Color.blue(color)),
+                Color.argb(60, Color.red(color), Color.green(color), Color.blue(color)), 8f)
+            iconBox.addView(TextView(this).apply { text = icon; textSize = 12f; gravity = Gravity.CENTER })
+            row.addView(iconBox)
+            row.addView(spacer(10, horizontal = true))
+            val info = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
+            }
+            info.addView(TextView(this).apply { text = title; setTextColor(C.T_HIGH); textSize = 11f; setTypeface(typeface, Typeface.BOLD) })
+            info.addView(TextView(this).apply { text = body; setTextColor(C.T_LOW); textSize = 9f })
+            row.addView(info)
+            // Add at top
+            layout.addView(row, 0)
+            layout.addView(View(this).apply {
+                setBackgroundColor(Color.argb(15, 255, 255, 255))
+                layoutParams = LinearLayout.LayoutParams(MATCH, 1)
+            }, 1)
+            // Keep max 10 alerts
+            while (layout.childCount > 20) layout.removeViewAt(layout.childCount - 1)
         }
     }
 

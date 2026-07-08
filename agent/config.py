@@ -232,9 +232,12 @@ class VortexApp:
 
         status_row = tk.Frame(self.root, bg=BG)
         status_row.pack(fill="x", padx=36, pady=(20, 0))
-        tk.Label(status_row, text="●", bg=BG, fg=GREEN,
+        running = _agent_thread is not None and _agent_thread.is_alive()
+        dot_color = GREEN if running else TEXT_DIM
+        status_text = "Running in background" if running else "Not running — click Save & Hide to start"
+        tk.Label(status_row, text="●", bg=BG, fg=dot_color,
                  font=("Segoe UI", 12)).pack(side="left")
-        tk.Label(status_row, text="  Running in background", bg=BG, fg=GREEN,
+        tk.Label(status_row, text=f"  {status_text}", bg=BG, fg=dot_color,
                  font=("Consolas", 10, "bold")).pack(side="left")
 
         tk.Frame(self.root, bg=BORDER, height=1).pack(
@@ -274,6 +277,10 @@ class VortexApp:
             agent.CONFIG = cfg
         except Exception:
             pass
+
+        # Agent না চললে start করো
+        if not (_agent_thread and _agent_thread.is_alive()):
+            start_agent_background()
 
         self._hide()
 
