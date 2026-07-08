@@ -401,19 +401,12 @@ def run_server():
 def main():
     """
     Open the Vortex UI window.
-    The UI itself handles starting / stopping the agent via the toggle.
-    If the agent was left Active from last session, auto-start the server.
     """
-    global CONFIG
-    from config import VortexUI, load_config
+    from config import VortexApp
 
     # If previously set to active, start server in background immediately
-    cfg = load_config()
-    if cfg.get("active", False):
-        threading.Thread(target=run_server, daemon=True).start()
 
-    # Open the UI window (blocks until user closes it)
-    VortexUI()
+    VortexApp()
 
 if __name__ == "__main__":
     main()
