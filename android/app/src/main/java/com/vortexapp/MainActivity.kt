@@ -1833,7 +1833,7 @@ class MainActivity : AppCompatActivity() {
                             row.addView(btn)
                         }
                         // Load default path
-                        val firstMount = drives.firstOrNull()?.asJsonObject?.get("mountpoint")?.asString ?: "C:\"
+                        val firstMount = drives.firstOrNull()?.asJsonObject?.get("mountpoint")?.asString ?: "C:\\"
                         currentPath = firstMount
                         sendCommand("files:list:$firstMount")
                     } catch (e: Exception) { showToast("Drives error: ${e.message}") }
@@ -1850,7 +1850,7 @@ class MainActivity : AppCompatActivity() {
 
                         // Parent dir button
                         if (path.length > 3) {
-                            val parentPath = java.io.File(path).parent ?: "C:\"
+                            val parentPath = java.io.File(path).parent ?: "C:\\"
                             val upRow = LinearLayout(this).apply {
                                 orientation = LinearLayout.HORIZONTAL
                                 gravity = Gravity.CENTER_VERTICAL
