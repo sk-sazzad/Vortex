@@ -155,7 +155,7 @@ class MainActivity : AppCompatActivity() {
         val nav = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(C.BG)
-            layoutParams = LinearLayout.LayoutParams(MATCH, dp(58))
+            layoutParams = LinearLayout.LayoutParams(MATCH, dp(64))
         }
 
         val tabs = listOf(
@@ -204,7 +204,7 @@ class MainActivity : AppCompatActivity() {
         val icons = listOf("⊞", "⚡", "📁", "⚙")
         val iconView = TextView(this).apply {
             text = icons[idx]
-            textSize = 14f
+            textSize = 18f
             gravity = Gravity.CENTER
             setTextColor(Color.argb(80, 255, 255, 255))
             layoutParams = LinearLayout.LayoutParams(WRAP, WRAP)
@@ -213,7 +213,7 @@ class MainActivity : AppCompatActivity() {
 
         val labelView = TextView(this).apply {
             text = label
-            textSize = 7f
+            textSize = 11f
             gravity = Gravity.CENTER
             setTextColor(Color.argb(80, 255, 255, 255))
             letterSpacing = 0.05f
@@ -234,59 +234,21 @@ class MainActivity : AppCompatActivity() {
             showNeedsConnectionPrompt(idx)
             return
         }
-
-        currentTab = idx
-        contentArea.removeAllViews()
-
-        for (i in 0..3) {
-            val active = i == idx
-            tabIndicators[i]?.visibility = if (active) View.VISIBLE else View.INVISIBLE
-            val tab = tabButtons[i] ?: continue
-            val isLocked = (i == 1 || i == 2) && connectedDevice == null
-            val color = when {
-                active   -> C.CYAN
-                isLocked -> Color.argb(35, 255, 255, 255)  // very dim = locked
-                else     -> Color.argb(80, 255, 255, 255)
-            }
-            (tab.getChildAt(1) as? TextView)?.setTextColor(color)
-            (tab.getChildAt(2) as? TextView)?.setTextColor(color)
-        }
-
-        val view = when (idx) {
-            0 -> buildDevicesTab()
-            1 -> buildControlTab()
-            2 -> buildFilesTab()
-            3 -> buildSettingsTab()
-            else -> buildDevicesTab()
-        }
-        contentArea.addView(view)
+        switchToTab(idx)
     }
 
     private fun showNeedsConnectionPrompt(targetTab: Int) {
         // Just switch to devices tab with a message
         currentTab = 0
         contentArea.removeAllViews()
-
-        for (i in 0..3) {
-            val active = i == 0
-            tabIndicators[i]?.visibility = if (active) View.VISIBLE else View.INVISIBLE
-            val tab = tabButtons[i] ?: continue
-            val isLocked = (i == 1 || i == 2) && connectedDevice == null
-            val color = when {
-                active   -> C.CYAN
-                isLocked -> Color.argb(35, 255, 255, 255)
-                else     -> Color.argb(80, 255, 255, 255)
-            }
-            (tab.getChildAt(1) as? TextView)?.setTextColor(color)
-            (tab.getChildAt(2) as? TextView)?.setTextColor(color)
-        }
+        refreshTabStates()
 
         val tabName = if (targetTab == 1) "Control" else "Files"
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             layoutParams = FrameLayout.LayoutParams(MATCH, MATCH)
-            setPadding(dp(32), 0, dp(32), dp(80))
+            setPadding(dp(32), 0, dp(32), dp(100))
         }
         layout.addView(TextView(this).apply { text = "🔒"; textSize = 40f; gravity = Gravity.CENTER })
         layout.addView(spacer(12))
@@ -335,9 +297,25 @@ class MainActivity : AppCompatActivity() {
                 isLocked -> Color.argb(35, 255, 255, 255)
                 else     -> Color.argb(80, 255, 255, 255)
             }
+            tabIndicators[i]?.visibility = if (active) View.VISIBLE else View.INVISIBLE
             (tab.getChildAt(1) as? TextView)?.setTextColor(color)
             (tab.getChildAt(2) as? TextView)?.setTextColor(color)
         }
+    }
+
+    // Centralized tab switching helper — avoids duplicated logic
+    private fun switchToTab(idx: Int) {
+        currentTab = idx
+        contentArea.removeAllViews()
+        refreshTabStates()
+        val view = when (idx) {
+            0 -> buildDevicesTab()
+            1 -> buildControlTab()
+            2 -> buildFilesTab()
+            3 -> buildSettingsTab()
+            else -> buildDevicesTab()
+        }
+        contentArea.addView(view)
     }
 
     // ═══════════════════════════════════════
@@ -350,7 +328,7 @@ class MainActivity : AppCompatActivity() {
         }
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(16), dp(16), dp(16))
+            setPadding(dp(16), dp(16), dp(16), dp(90))
         }
         scroll.addView(layout)
 
@@ -446,7 +424,7 @@ class MainActivity : AppCompatActivity() {
         meta.addView(TextView(this).apply {
             text = if (device.online) "${device.os} · ${device.ip}" else "Offline"
             setTextColor(C.T_LOW)
-            textSize = 9f
+            textSize = 11f
         })
         info.addView(meta)
         card.addView(info)
@@ -455,7 +433,7 @@ class MainActivity : AppCompatActivity() {
             card.addView(TextView(this).apply {
                 text = "${device.ping}ms"
                 setTextColor(Color.argb(100, 0, 229, 255))
-                textSize = 9f
+                textSize = 11f
             })
         }
 
@@ -524,16 +502,22 @@ class MainActivity : AppCompatActivity() {
         devRow.addView(spacer(12, horizontal = true))
         val devInfo = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         devInfo.addView(TextView(this).apply { text = device.name; setTextColor(C.T_HIGH); textSize = 14f; setTypeface(typeface, Typeface.BOLD) })
-        devInfo.addView(TextView(this).apply { text = "${device.os} · ${device.ip} · ${device.ping}ms"; setTextColor(C.T_LOW); textSize = 9f })
+        devInfo.addView(TextView(this).apply { text = "${device.os} · ${device.ip} · ${device.ping}ms"; setTextColor(C.T_LOW); textSize = 11f })
         devRow.addView(devInfo)
         dialogLayout.addView(devRow)
 
         val passField = android.widget.EditText(this).apply {
             hint = "Enter password"
             setHintTextColor(Color.argb(60, 255, 255, 255))
+            setTextColor(C.T_HIGH)
             textSize = 13f
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply {
+                topMargin = dp(8)
+                bottomMargin = dp(4)
+            }
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = cardBg(Color.argb(20, 0, 229, 255), Color.argb(60, 0, 229, 255), 10f)
         }
         dialogLayout.addView(passField)
 
@@ -558,7 +542,7 @@ class MainActivity : AppCompatActivity() {
         }
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(16), dp(16), dp(24))
+            setPadding(dp(16), dp(16), dp(16), dp(90))
         }
         scroll.addView(layout)
 
@@ -664,7 +648,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun buildScreenSubMenu(): ScrollView {
         val scroll = ScrollView(this).apply { layoutParams = FrameLayout.LayoutParams(MATCH, MATCH); setBackgroundColor(C.BG) }
-        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(24)) }
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(90)) }
         scroll.addView(layout)
         layout.addView(buildSubMenuHeader("Screen Control", "🖥"))
         layout.addView(buildScreenCard())
@@ -673,7 +657,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun buildShellSubMenu(): ScrollView {
         val scroll = ScrollView(this).apply { layoutParams = FrameLayout.LayoutParams(MATCH, MATCH); setBackgroundColor(C.BG) }
-        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(24)) }
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(90)) }
         scroll.addView(layout)
         layout.addView(buildSubMenuHeader("Shell Terminal", "💻"))
         layout.addView(buildShellCard())
@@ -682,7 +666,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun buildMediaSubMenu(): ScrollView {
         val scroll = ScrollView(this).apply { layoutParams = FrameLayout.LayoutParams(MATCH, MATCH); setBackgroundColor(C.BG) }
-        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(24)) }
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(90)) }
         scroll.addView(layout)
         layout.addView(buildSubMenuHeader("Media Control", "🎵"))
         layout.addView(buildMediaCard())
@@ -691,7 +675,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun buildAlertsSubMenu(): ScrollView {
         val scroll = ScrollView(this).apply { layoutParams = FrameLayout.LayoutParams(MATCH, MATCH); setBackgroundColor(C.BG) }
-        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(24)) }
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(90)) }
         scroll.addView(layout)
         layout.addView(buildSubMenuHeader("Alerts & Notifications", "🔔"))
         layout.addView(buildAlertsCard())
@@ -700,7 +684,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun buildClipboardSubMenu(): ScrollView {
         val scroll = ScrollView(this).apply { layoutParams = FrameLayout.LayoutParams(MATCH, MATCH); setBackgroundColor(C.BG) }
-        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(24)) }
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(90)) }
         scroll.addView(layout)
         layout.addView(buildSubMenuHeader("Clipboard Sync", "📋"))
         layout.addView(buildClipboardCard())
@@ -709,7 +693,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun buildMessagesSubMenu(): ScrollView {
         val scroll = ScrollView(this).apply { layoutParams = FrameLayout.LayoutParams(MATCH, MATCH); setBackgroundColor(C.BG) }
-        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(24)) }
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(90)) }
         scroll.addView(layout)
         layout.addView(buildSubMenuHeader("Messages", "💬"))
         layout.addView(buildMessagesCard())
@@ -718,7 +702,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun buildPowerSubMenu(): ScrollView {
         val scroll = ScrollView(this).apply { layoutParams = FrameLayout.LayoutParams(MATCH, MATCH); setBackgroundColor(C.BG) }
-        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(24)) }
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(90)) }
         scroll.addView(layout)
         layout.addView(buildSubMenuHeader("Power Control", "⚡"))
         layout.addView(spacer(8))
@@ -733,7 +717,7 @@ class MainActivity : AppCompatActivity() {
             val btn = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(16), dp(16), dp(16), dp(16))
+                setPadding(dp(16), dp(14), dp(16), dp(14))
                 background = cardBg(Color.argb(15, 0, 229, 255), Color.argb(35, 0, 229, 255), 12f)
                 layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(8) }
                 setOnClickListener {
@@ -755,7 +739,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun buildPerfSubMenu(): ScrollView {
         val scroll = ScrollView(this).apply { layoutParams = FrameLayout.LayoutParams(MATCH, MATCH); setBackgroundColor(C.BG) }
-        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(24)) }
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(90)) }
         scroll.addView(layout)
         layout.addView(buildSubMenuHeader("Performance", "🎮"))
         layout.addView(spacer(8))
@@ -770,7 +754,7 @@ class MainActivity : AppCompatActivity() {
             val btn = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(16), dp(16), dp(16), dp(16))
+                setPadding(dp(16), dp(14), dp(16), dp(14))
                 background = cardBg(Color.argb(15, 0, 229, 255), Color.argb(35, 0, 229, 255), 12f)
                 layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(8) }
                 setOnClickListener {
@@ -792,7 +776,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun buildAppManagerSubMenu(): ScrollView {
         val scroll = ScrollView(this).apply { layoutParams = FrameLayout.LayoutParams(MATCH, MATCH); setBackgroundColor(C.BG) }
-        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(24)) }
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(90)) }
         scroll.addView(layout)
         layout.addView(buildSubMenuHeader("App Manager", "📦"))
         layout.addView(spacer(16))
@@ -814,7 +798,7 @@ class MainActivity : AppCompatActivity() {
         }
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(16), dp(16), dp(24))
+            setPadding(dp(16), dp(16), dp(16), dp(90))
         }
         scroll.addView(layout)
 
@@ -887,7 +871,7 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
         }
         info.addView(TextView(this).apply { text = device.name; setTextColor(C.T_HIGH); textSize = 12f; setTypeface(typeface, Typeface.BOLD) })
-        info.addView(TextView(this).apply { text = "${device.ip} · ${device.ping}ms"; setTextColor(C.T_LOW); textSize = 9f })
+        info.addView(TextView(this).apply { text = "${device.ip} · ${device.ping}ms"; setTextColor(C.T_LOW); textSize = 11f })
         row.addView(info)
 
         val badge = LinearLayout(this).apply {
@@ -900,7 +884,7 @@ class MainActivity : AppCompatActivity() {
             background = circle(C.GREEN)
             layoutParams = LinearLayout.LayoutParams(dp(5), dp(5)).apply { rightMargin = dp(4) }
         })
-        badge.addView(TextView(this).apply { text = "LIVE"; setTextColor(C.GREEN); textSize = 8f; letterSpacing = 0.1f })
+        badge.addView(TextView(this).apply { text = "LIVE"; setTextColor(C.GREEN); textSize = 11f; letterSpacing = 0.1f })
         row.addView(badge)
 
         return row
@@ -928,7 +912,7 @@ class MainActivity : AppCompatActivity() {
         overlay.addView(TextView(this).apply {
             text = "TAP TO START STREAM"
             setTextColor(Color.argb(80, 0, 229, 255))
-            textSize = 9f
+            textSize = 11f
             gravity = Gravity.CENTER
             letterSpacing = 0.15f
         })
@@ -951,7 +935,7 @@ class MainActivity : AppCompatActivity() {
             btn.addView(TextView(this).apply {
                 text = label
                 setTextColor(Color.argb(120, 0, 229, 255))
-                textSize = 8f
+                textSize = 11f
                 gravity = Gravity.CENTER
                 letterSpacing = 0.05f
             })
@@ -969,7 +953,7 @@ class MainActivity : AppCompatActivity() {
             val tv = TextView(this).apply {
                 text = info
                 setTextColor(Color.argb(80, 0, 229, 255))
-                textSize = 8f
+                textSize = 11f
                 layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
                 gravity = Gravity.CENTER
             }
@@ -1061,7 +1045,7 @@ class MainActivity : AppCompatActivity() {
         card.addView(TextView(this).apply {
             text = label
             setTextColor(Color.argb(80, 255, 255, 255))
-            textSize = 8f
+            textSize = 11f
             letterSpacing = 0.05f
         })
         return card
@@ -1095,7 +1079,7 @@ class MainActivity : AppCompatActivity() {
             btn.addView(TextView(this).apply {
                 text = label
                 setTextColor(Color.argb(120, 255, 255, 255))
-                textSize = 7f
+                textSize = 11f
                 gravity = Gravity.CENTER
                 letterSpacing = 0.05f
             })
@@ -1162,7 +1146,7 @@ class MainActivity : AppCompatActivity() {
             val chip = TextView(this).apply {
                 text = cmd
                 setTextColor(Color.argb(140, 0, 229, 255))
-                textSize = 9f
+                textSize = 11f
                 setPadding(dp(8), dp(4), dp(8), dp(4))
                 background = cardBg(Color.argb(15, 0, 229, 255), Color.argb(35, 0, 229, 255), 5f)
                 layoutParams = LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(6) }
@@ -1229,7 +1213,7 @@ class MainActivity : AppCompatActivity() {
         card.addView(TextView(this).apply {
             text = "SPOTIFY"
             setTextColor(Color.argb(100, 0, 229, 255))
-            textSize = 8f
+            textSize = 11f
             letterSpacing = 0.2f
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(6) }
         })
@@ -1262,9 +1246,9 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(14) }
         }
-        timeRow.addView(TextView(this).apply { text = "1:24"; setTextColor(C.T_FAINT); textSize = 9f })
+        timeRow.addView(TextView(this).apply { text = "1:24"; setTextColor(C.T_FAINT); textSize = 11f })
         timeRow.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(0, 1, 1f) })
-        timeRow.addView(TextView(this).apply { text = "3:20"; setTextColor(C.T_FAINT); textSize = 9f })
+        timeRow.addView(TextView(this).apply { text = "3:20"; setTextColor(C.T_FAINT); textSize = 11f })
         card.addView(timeRow)
 
         val btnRow = LinearLayout(this).apply {
@@ -1296,7 +1280,7 @@ class MainActivity : AppCompatActivity() {
             appRow.addView(TextView(this).apply {
                 text = app
                 setTextColor(if (i == 0) C.CYAN else C.T_FAINT)
-                textSize = 8f
+                textSize = 11f
                 setPadding(0, dp(5), 0, dp(5))
                 gravity = Gravity.CENTER
                 layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
@@ -1350,11 +1334,11 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(5) }
         }
-        pcTop.addView(TextView(this).apply { text = "PC → MOBILE"; setTextColor(Color.argb(120, 191, 95, 255)); textSize = 8f; letterSpacing = 0.1f; layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f) })
+        pcTop.addView(TextView(this).apply { text = "PC → MOBILE"; setTextColor(Color.argb(120, 191, 95, 255)); textSize = 11f; letterSpacing = 0.1f; layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f) })
         pcTop.addView(TextView(this).apply {
             text = "AUTO ON"
             setTextColor(C.GREEN)
-            textSize = 7f
+            textSize = 11f
             letterSpacing = 0.1f
             setPadding(dp(6), dp(3), dp(6), dp(3))
             background = cardBg(Color.argb(30, 0, 230, 118), Color.argb(60, 0, 230, 118), 20f)
@@ -1368,7 +1352,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(10), dp(10), dp(10), dp(10))
             background = cardBg(Color.argb(15, 0, 229, 255), Color.argb(30, 0, 229, 255), 8f)
         }
-        mobBox.addView(TextView(this).apply { text = "MOBILE → PC"; setTextColor(Color.argb(100, 0, 229, 255)); textSize = 8f; letterSpacing = 0.1f })
+        mobBox.addView(TextView(this).apply { text = "MOBILE → PC"; setTextColor(Color.argb(100, 0, 229, 255)); textSize = 11f; letterSpacing = 0.1f })
         mobBox.addView(spacer(4))
         mobBox.addView(TextView(this).apply { text = "Copy anything on phone → auto paste on PC"; setTextColor(C.T_LOW); textSize = 10f })
         card.addView(mobBox)
@@ -1396,7 +1380,7 @@ class MainActivity : AppCompatActivity() {
                 layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(6) }
             }
             if (!isOut && from.isNotEmpty()) {
-                wrap.addView(TextView(this).apply { this.text = from; setTextColor(C.T_FAINT); textSize = 8f })
+                wrap.addView(TextView(this).apply { this.text = from; setTextColor(C.T_FAINT); textSize = 11f })
                 wrap.addView(spacer(2))
             }
             val bubble = LinearLayout(this).apply {
@@ -1495,7 +1479,7 @@ class MainActivity : AppCompatActivity() {
                 layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
             }
             info.addView(TextView(this).apply { text = name; setTextColor(C.T_HIGH); textSize = 11f; setTypeface(typeface, Typeface.BOLD) })
-            info.addView(TextView(this).apply { text = time; setTextColor(C.T_LOW); textSize = 9f })
+            info.addView(TextView(this).apply { text = time; setTextColor(C.T_LOW); textSize = 11f })
             row.addView(info)
 
             val toggleBg = FrameLayout(this).apply {
@@ -1522,7 +1506,7 @@ class MainActivity : AppCompatActivity() {
         card.addView(TextView(this).apply {
             text = "// TRIGGER RULES (IF→THEN)"
             setTextColor(Color.argb(80, 0, 229, 255))
-            textSize = 8f
+            textSize = 11f
             letterSpacing = 0.1f
             layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(8) }
         })
@@ -1541,7 +1525,7 @@ class MainActivity : AppCompatActivity() {
             ruleBox.addView(TextView(this).apply {
                 text = rule
                 setTextColor(Color.argb(90, 255, 255, 255))
-                textSize = 9f
+                textSize = 11f
                 typeface = Typeface.MONOSPACE
                 layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(4) }
             })
@@ -1561,7 +1545,7 @@ class MainActivity : AppCompatActivity() {
         }
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(16), dp(16), dp(24))
+            setPadding(dp(16), dp(16), dp(16), dp(90))
         }
         scroll.addView(layout)
 
@@ -1629,7 +1613,7 @@ class MainActivity : AppCompatActivity() {
             }
             btn.addView(TextView(this).apply { text = icon; textSize = 20f; gravity = Gravity.CENTER })
             btn.addView(spacer(6))
-            btn.addView(TextView(this).apply { text = label; setTextColor(Color.argb(120, 255, 255, 255)); textSize = 9f; gravity = Gravity.CENTER; letterSpacing = 0.05f })
+            btn.addView(TextView(this).apply { text = label; setTextColor(Color.argb(120, 255, 255, 255)); textSize = 11f; gravity = Gravity.CENTER; letterSpacing = 0.05f })
             shareRow.addView(btn)
         }
         layout.addView(shareRow)
@@ -1650,7 +1634,7 @@ class MainActivity : AppCompatActivity() {
         printCard.addView(spacer(10, horizontal = true))
         val printInfo = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f) }
         printInfo.addView(TextView(this).apply { text = "HP LaserJet Pro"; setTextColor(C.T_HIGH); textSize = 12f; setTypeface(typeface, Typeface.BOLD) })
-        printInfo.addView(TextView(this).apply { text = "READY · USB"; setTextColor(C.T_LOW); textSize = 9f })
+        printInfo.addView(TextView(this).apply { text = "READY · USB"; setTextColor(C.T_LOW); textSize = 11f })
         printCard.addView(printInfo)
         printCard.addView(TextView(this).apply {
             text = "PRINT"
@@ -1678,12 +1662,12 @@ class MainActivity : AppCompatActivity() {
             row.addView(spacer(10, horizontal = true))
             val info = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f) }
             info.addView(TextView(this).apply { text = name; setTextColor(C.T_HIGH); textSize = 11f })
-            info.addView(TextView(this).apply { text = meta; setTextColor(C.T_FAINT); textSize = 9f })
+            info.addView(TextView(this).apply { text = meta; setTextColor(C.T_FAINT); textSize = 11f })
             row.addView(info)
             row.addView(TextView(this).apply {
                 text = "REMOVE"
                 setTextColor(Color.argb(120, 255, 80, 100))
-                textSize = 8f
+                textSize = 11f
                 setPadding(dp(8), dp(5), dp(8), dp(5))
                 background = cardBg(Color.argb(20, 255, 50, 80), Color.argb(50, 255, 50, 80), 6f)
                 setOnClickListener { sendCommand("app:uninstall:$name") }
@@ -1718,7 +1702,7 @@ class MainActivity : AppCompatActivity() {
         }
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(16), dp(16), dp(24))
+            setPadding(dp(16), dp(16), dp(16), dp(90))
         }
         scroll.addView(layout)
 
@@ -1802,7 +1786,7 @@ class MainActivity : AppCompatActivity() {
                 layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
             }
             info.addView(TextView(this).apply { text = item.name; setTextColor(C.T_MED); textSize = 11f })
-            info.addView(TextView(this).apply { text = item.desc; setTextColor(C.T_FAINT); textSize = 9f })
+            info.addView(TextView(this).apply { text = item.desc; setTextColor(C.T_FAINT); textSize = 11f })
             row.addView(info)
 
             when {
@@ -1829,7 +1813,7 @@ class MainActivity : AppCompatActivity() {
                     row.addView(TextView(this).apply {
                         text = item.value
                         setTextColor(Color.argb(80, 0, 229, 255))
-                        textSize = 9f
+                        textSize = 11f
                         typeface = Typeface.MONOSPACE
                     })
                 }
@@ -2207,7 +2191,7 @@ class MainActivity : AppCompatActivity() {
                                 layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
                             }
                             info.addView(TextView(this).apply { text = name; setTextColor(C.T_HIGH); textSize = 11f })
-                            info.addView(TextView(this).apply { text = meta; setTextColor(C.T_FAINT); textSize = 9f })
+                            info.addView(TextView(this).apply { text = meta; setTextColor(C.T_FAINT); textSize = 11f })
                             row.addView(info)
                             row.addView(TextView(this).apply {
                                 text = if (isDir) "›" else "⬇"
@@ -2234,7 +2218,7 @@ class MainActivity : AppCompatActivity() {
                 layout.addView(TextView(this).apply {
                     this.text = "  $line"
                     setTextColor(Color.argb(180, 200, 255, 200))
-                    textSize = 8f
+                    textSize = 11f
                     typeface = Typeface.MONOSPACE
                 })
             }
@@ -2260,7 +2244,7 @@ class MainActivity : AppCompatActivity() {
                 layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
             }
             info.addView(TextView(this).apply { text = title; setTextColor(C.T_HIGH); textSize = 11f; setTypeface(typeface, Typeface.BOLD) })
-            info.addView(TextView(this).apply { text = body; setTextColor(C.T_LOW); textSize = 9f })
+            info.addView(TextView(this).apply { text = body; setTextColor(C.T_LOW); textSize = 11f })
             row.addView(info)
             // Add at top
             layout.addView(row, 0)
@@ -2397,7 +2381,7 @@ class MainActivity : AppCompatActivity() {
     private fun sectionLabel(text: String): TextView = TextView(this).apply {
         this.text = text
         setTextColor(Color.argb(90, 0, 229, 255))
-        textSize = 9f
+        textSize = 11f
         letterSpacing = 0.15f
         typeface = Typeface.MONOSPACE
     }
@@ -2426,11 +2410,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun termLine(prompt: String, cmd: String, pc: Int, pu: Int, cursor: Boolean = false): LinearLayout {
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        row.addView(TextView(this).apply { text = "vortex"; setTextColor(pc); textSize = 9f; typeface = Typeface.MONOSPACE })
-        row.addView(TextView(this).apply { text = "@"; setTextColor(Color.argb(60, 255, 255, 255)); textSize = 9f; typeface = Typeface.MONOSPACE })
-        row.addView(TextView(this).apply { text = "pc"; setTextColor(pu); textSize = 9f; typeface = Typeface.MONOSPACE })
-        row.addView(TextView(this).apply { text = ":~\$ "; setTextColor(Color.argb(60, 255, 255, 255)); textSize = 9f; typeface = Typeface.MONOSPACE })
-        if (cmd.isNotEmpty()) row.addView(TextView(this).apply { text = cmd; setTextColor(Color.argb(180, 255, 255, 255)); textSize = 9f; typeface = Typeface.MONOSPACE })
+        row.addView(TextView(this).apply { text = "vortex"; setTextColor(pc); textSize = 10f; typeface = Typeface.MONOSPACE })
+        row.addView(TextView(this).apply { text = "@"; setTextColor(Color.argb(60, 255, 255, 255)); textSize = 10f; typeface = Typeface.MONOSPACE })
+        row.addView(TextView(this).apply { text = "pc"; setTextColor(pu); textSize = 10f; typeface = Typeface.MONOSPACE })
+        row.addView(TextView(this).apply { text = ":~\$ "; setTextColor(Color.argb(60, 255, 255, 255)); textSize = 10f; typeface = Typeface.MONOSPACE })
+        if (cmd.isNotEmpty()) row.addView(TextView(this).apply { text = cmd; setTextColor(Color.argb(180, 255, 255, 255)); textSize = 10f; typeface = Typeface.MONOSPACE })
         if (cursor) row.addView(View(this).apply {
             background = roundedBg(C.CYAN, 1f)
             layoutParams = LinearLayout.LayoutParams(dp(6), dp(12))
@@ -2441,14 +2425,14 @@ class MainActivity : AppCompatActivity() {
     private fun termOutput(text: String): TextView = TextView(this).apply {
         this.text = "  $text"
         setTextColor(Color.argb(90, 255, 255, 255))
-        textSize = 8f
+        textSize = 11f
         typeface = Typeface.MONOSPACE
     }
 
     private fun termOk(text: String): TextView = TextView(this).apply {
         this.text = "  $text"
         setTextColor(Color.argb(160, 0, 230, 118))
-        textSize = 8f
+        textSize = 11f
         typeface = Typeface.MONOSPACE
     }
 
@@ -2477,14 +2461,21 @@ class MainActivity : AppCompatActivity() {
                 setColor(fill)
                 setStroke(dp(1), stroke)
             }
-            val accent = GradientDrawable().apply {
+            val accentBar = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadii = floatArrayOf(r, r, 0f, 0f, 0f, 0f, r, r)
                 setColor(leftAccent)
             }
-            val layer = android.graphics.drawable.LayerDrawable(arrayOf(base, accent))
-            layer.setLayerInset(1, 0, 0, layer.getDrawable(0).let { dp(200) }, 0)
-            base // fallback — return styled base; accent overlay on layered backgrounds
+            // Layer: accent bar on left (3dp wide), base fills the rest
+            val layer = android.graphics.drawable.LayerDrawable(arrayOf(base, accentBar))
+            val accentW = dp(3)
+            layer.setLayerInset(0, accentW, 0, 0, 0)  // base: inset from left by accent width
+            layer.setLayerInset(1, 0, 0, 0, 0)        // accent: full height, left-anchored
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                layer.setLayerWidth(1, accentW)
+                layer.setLayerGravity(1, android.view.Gravity.LEFT)
+            }
+            layer
         } else {
             GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
