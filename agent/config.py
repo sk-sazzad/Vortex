@@ -1,15 +1,11 @@
 """
 Vortex Agent — Setup & Control
-Chrome Remote Desktop style:
-- First run: setup screen
-- After setup: auto background start, no popup
-- Reopen: settings screen to update
+Chrome Remote Desktop style flow
 """
 import json
 import os
 import sys
 import platform
-import subprocess
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -33,7 +29,7 @@ def load_config():
     if CONFIG_FILE.exists():
         with open(CONFIG_FILE) as f:
             return json.load(f)
-    return None   # None = first time
+    return None
 
 def save_config(cfg):
     with open(CONFIG_FILE, "w") as f:
@@ -67,16 +63,18 @@ def set_autostart(enable: bool):
 _agent_thread = None
 
 def start_agent_background():
+    """
+    EXE environment এ agent.py আলাদাভাবে load হয় না।
+    তাই agent module থেকে সরাসরি run_server import করি।
+    """
     global _agent_thread
-    import importlib.util
-    agent_path = Path(__file__).parent / "agent.py"
 
     def run():
         try:
-            spec = importlib.util.spec_from_file_location("vortex_agent", agent_path)
-            mod  = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            mod.run_server()
+            import agent
+            # Config reload করি যাতে নতুন password কাজ করে
+            agent.CONFIG = load_config() or agent.CONFIG
+            agent.run_server()
         except Exception as e:
             print(f"[Vortex] agent error: {e}")
 
@@ -98,10 +96,10 @@ class VortexApp:
         if is_first_run():
             self._build_setup()
         else:
-            self._build_settings()
-            # Auto-start agent in background
+            # Auto-start agent
             start_agent_background()
             set_autostart(True)
+            self._build_settings()
 
         self.root.mainloop()
 
@@ -118,10 +116,8 @@ class VortexApp:
     def _header(self, subtitle=""):
         hdr = tk.Frame(self.root, bg=BG)
         hdr.pack(fill="x", padx=36, pady=(36, 0))
-
         tk.Label(hdr, text="⚡", bg=BG, fg=ACCENT,
                  font=("Segoe UI", 26)).pack(side="left", padx=(0, 12))
-
         box = tk.Frame(hdr, bg=BG)
         box.pack(side="left")
         tk.Label(box, text="VORTEX", bg=BG, fg=TEXT,
@@ -129,7 +125,6 @@ class VortexApp:
         if subtitle:
             tk.Label(box, text=subtitle, bg=BG, fg=TEXT_MID,
                      font=("Consolas", 8)).pack(anchor="w")
-
         tk.Frame(self.root, bg=BORDER, height=1).pack(
             fill="x", padx=36, pady=(22, 0))
 
@@ -153,10 +148,6 @@ class VortexApp:
         e.pack(fill="x", ipady=10, padx=36)
         e.insert(0, default)
         return e
-
-    def _divider(self, pady=(24, 0)):
-        tk.Frame(self.root, bg=BORDER, height=1).pack(
-            fill="x", padx=36, pady=pady)
 
     def _btn(self, text, cmd, primary=True):
         if primary:
@@ -207,14 +198,13 @@ class VortexApp:
         self.err_lbl.pack(pady=(10, 0))
 
         tk.Frame(self.root, bg=BG).pack(expand=True)
-
         self._btn("Start Agent", self._finish_setup, primary=True)
         tk.Frame(self.root, bg=BG, height=28).pack()
 
     def _finish_setup(self):
-        name  = self.name_e.get().strip() or platform.node()
-        pwd   = self.pass_e.get().strip()
-        pwd2  = self.pass2_e.get().strip()
+        name = self.name_e.get().strip() or platform.node()
+        pwd  = self.pass_e.get().strip()
+        pwd2 = self.pass2_e.get().strip()
 
         if not pwd:
             self.err_lbl.config(text="⚠  Password cannot be empty")
@@ -223,21 +213,16 @@ class VortexApp:
             self.err_lbl.config(text="⚠  Passwords do not match")
             return
 
-        cfg = {
-            "device_name": name,
-            "password": pwd,
-            "port": 8765
-        }
+        cfg = {"device_name": name, "password": pwd, "port": 8765}
         save_config(cfg)
         set_autostart(True)
         start_agent_background()
 
-        # Switch to settings screen, hide window
         self._build_settings()
-        self.root.after(300, self._hide)
+        self.root.after(500, self._hide)
 
     # ══════════════════════════════════════════════════════
-    # SETTINGS SCREEN (after setup)
+    # SETTINGS SCREEN
     # ══════════════════════════════════════════════════════
     def _build_settings(self):
         self._clear()
@@ -245,7 +230,6 @@ class VortexApp:
 
         self._header("Agent Control Panel")
 
-        # Status indicator
         status_row = tk.Frame(self.root, bg=BG)
         status_row.pack(fill="x", padx=36, pady=(20, 0))
         tk.Label(status_row, text="●", bg=BG, fg=GREEN,
@@ -253,7 +237,8 @@ class VortexApp:
         tk.Label(status_row, text="  Running in background", bg=BG, fg=GREEN,
                  font=("Consolas", 10, "bold")).pack(side="left")
 
-        self._divider(pady=(20, 0))
+        tk.Frame(self.root, bg=BORDER, height=1).pack(
+            fill="x", padx=36, pady=(20, 0))
 
         self._label("DEVICE NAME")
         self.name_e = self._entry(cfg.get("device_name", platform.node()))
@@ -266,7 +251,6 @@ class VortexApp:
         self.err_lbl.pack(pady=(8, 0))
 
         tk.Frame(self.root, bg=BG).pack(expand=True)
-
         self._btn("Save & Hide", self._save_and_hide, primary=True)
         self._btn("Exit Agent", self._exit_agent, primary=False)
         tk.Frame(self.root, bg=BG, height=24).pack()
@@ -283,6 +267,14 @@ class VortexApp:
         cfg["device_name"] = name
         cfg["password"]    = pwd
         save_config(cfg)
+
+        # Running agent এ নতুন config apply করো
+        try:
+            import agent
+            agent.CONFIG = cfg
+        except Exception:
+            pass
+
         self._hide()
 
     def _hide(self):
@@ -291,16 +283,14 @@ class VortexApp:
     def _exit_agent(self):
         set_autostart(False)
         try:
-            import vortex_agent as ag
-            ag.agent_running = False
+            import agent
+            agent.agent_running = False
         except Exception:
             pass
         self.root.destroy()
         os._exit(0)
 
-    # ── close button ─────────────────────────────────────
     def _on_close(self):
-        """X চাপলে hide হবে — বন্ধ হবে না।"""
         self._hide()
 
 
