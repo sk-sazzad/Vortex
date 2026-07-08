@@ -1,7 +1,9 @@
 """
-Vortex Agent — Main UI Window
-- Window close করলে background এ চলতে থাকে (active থাকলে)
-- Windows startup এ auto-start
+Vortex Agent — Setup & Control
+Chrome Remote Desktop style:
+- First run: setup screen
+- After setup: auto background start, no popup
+- Reopen: settings screen to update
 """
 import json
 import os
@@ -16,13 +18,14 @@ CONFIG_FILE = Path(__file__).parent / "config.json"
 
 # ── colours ──────────────────────────────────────────────
 BG         = "#0a0a0f"
-SURFACE    = "#111118"
-BORDER     = "#1e1e2e"
+SURFACE    = "#0f0f1a"
+BORDER     = "#1a1a2e"
 ACCENT     = "#00e5ff"
-ACCENT_DIM = "#004f5a"
+ACCENT_DIM = "#003d4a"
 TEXT       = "#e0e0f0"
-TEXT_DIM   = "#44445a"
-RED        = "#ff4566"
+TEXT_DIM   = "#3a3a55"
+TEXT_MID   = "#7070a0"
+RED        = "#ff3355"
 GREEN      = "#00e5a0"
 
 # ─────────────────────────────────────────────────────────
@@ -30,20 +33,17 @@ def load_config():
     if CONFIG_FILE.exists():
         with open(CONFIG_FILE) as f:
             return json.load(f)
-    return {
-        "device_name": platform.node(),
-        "password": "",
-        "port": 8765,
-        "active": False
-    }
+    return None   # None = first time
 
 def save_config(cfg):
     with open(CONFIG_FILE, "w") as f:
         json.dump(cfg, f, indent=2)
 
-# ── Windows startup registry ──────────────────────────────
+def is_first_run():
+    return load_config() is None
+
+# ── Windows autostart ─────────────────────────────────────
 def set_autostart(enable: bool):
-    """Add or remove VortexAgent from Windows startup registry."""
     try:
         import winreg
         key = winreg.OpenKey(
@@ -52,7 +52,7 @@ def set_autostart(enable: bool):
             0, winreg.KEY_SET_VALUE
         )
         if enable:
-            exe = sys.executable if not getattr(sys, "frozen", False) else sys.executable
+            exe = sys.executable
             winreg.SetValueEx(key, "VortexAgent", 0, winreg.REG_SZ, f'"{exe}"')
         else:
             try:
@@ -63,156 +63,82 @@ def set_autostart(enable: bool):
     except Exception as e:
         print(f"[Vortex] autostart error: {e}")
 
-# ─────────────────────────────────────────────────────────
-class VortexUI:
-    def __init__(self):
-        self.cfg          = load_config()
-        self.agent_thread = None
-        self._hidden      = False
+# ── Agent runner ──────────────────────────────────────────
+_agent_thread = None
 
+def start_agent_background():
+    global _agent_thread
+    import importlib.util
+    agent_path = Path(__file__).parent / "agent.py"
+
+    def run():
+        try:
+            spec = importlib.util.spec_from_file_location("vortex_agent", agent_path)
+            mod  = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            mod.run_server()
+        except Exception as e:
+            print(f"[Vortex] agent error: {e}")
+
+    if not _agent_thread or not _agent_thread.is_alive():
+        _agent_thread = threading.Thread(target=run, daemon=True)
+        _agent_thread.start()
+
+# ─────────────────────────────────────────────────────────
+class VortexApp:
+    def __init__(self):
         self.root = tk.Tk()
         self.root.title("Vortex Agent")
         self.root.configure(bg=BG)
         self.root.resizable(False, False)
-
-        W, H = 420, 500
-        self.root.geometry(
-            f"{W}x{H}+"
-            f"{(self.root.winfo_screenwidth()-W)//2}+"
-            f"{(self.root.winfo_screenheight()-H)//2}"
-        )
-
-        self._build()
-
-        # Close button → hide (background এ চলবে) যদি active থাকে
-        # নইলে normally বন্ধ হবে
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
-        # Auto-start agent if was active last session
-        if self.cfg.get("active", False):
-            self._start_agent()
+        self._center(400, 520)
+
+        if is_first_run():
+            self._build_setup()
+        else:
+            self._build_settings()
+            # Auto-start agent in background
+            start_agent_background()
+            set_autostart(True)
 
         self.root.mainloop()
 
-    # ── build UI ─────────────────────────────────────────
-    def _build(self):
-        pad = dict(padx=32)
+    def _center(self, w, h):
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+        self.root.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
 
-        # ── header ──
+    def _clear(self):
+        for w in self.root.winfo_children():
+            w.destroy()
+
+    # ── SHARED WIDGETS ────────────────────────────────────
+    def _header(self, subtitle=""):
         hdr = tk.Frame(self.root, bg=BG)
-        hdr.pack(fill="x", pady=(36, 0), **pad)
+        hdr.pack(fill="x", padx=36, pady=(36, 0))
 
         tk.Label(hdr, text="⚡", bg=BG, fg=ACCENT,
-                 font=("Segoe UI", 28)).pack(side="left", padx=(0, 10))
+                 font=("Segoe UI", 26)).pack(side="left", padx=(0, 12))
 
-        title_box = tk.Frame(hdr, bg=BG)
-        title_box.pack(side="left")
-        tk.Label(title_box, text="VORTEX", bg=BG, fg=TEXT,
-                 font=("Consolas", 18, "bold")).pack(anchor="w")
-        tk.Label(title_box, text="Agent Control Panel", bg=BG, fg=TEXT_DIM,
-                 font=("Consolas", 8)).pack(anchor="w")
+        box = tk.Frame(hdr, bg=BG)
+        box.pack(side="left")
+        tk.Label(box, text="VORTEX", bg=BG, fg=TEXT,
+                 font=("Consolas", 17, "bold")).pack(anchor="w")
+        if subtitle:
+            tk.Label(box, text=subtitle, bg=BG, fg=TEXT_MID,
+                     font=("Consolas", 8)).pack(anchor="w")
 
-        # ── divider ──
         tk.Frame(self.root, bg=BORDER, height=1).pack(
-            fill="x", padx=32, pady=(24, 28))
+            fill="x", padx=36, pady=(22, 0))
 
-        # ── fields ──
-        self._field("Device Name", self.cfg.get("device_name", ""))
-        self._spacer(14)
-        self._field("Password", self.cfg.get("password", ""), secret=True)
+    def _label(self, text):
+        tk.Label(self.root, text=text, bg=BG, fg=TEXT_DIM,
+                 font=("Consolas", 8), anchor="w").pack(
+                 fill="x", padx=36, pady=(18, 3))
 
-        # ── divider ──
-        tk.Frame(self.root, bg=BORDER, height=1).pack(
-            fill="x", padx=32, pady=(32, 28))
-
-        # ── status row ──
-        row = tk.Frame(self.root, bg=BG)
-        row.pack(fill="x", **pad)
-
-        status_col = tk.Frame(row, bg=BG)
-        status_col.pack(side="left")
-
-        tk.Label(status_col, text="STATUS", bg=BG, fg=TEXT_DIM,
-                 font=("Consolas", 7)).pack(anchor="w")
-
-        status_inner = tk.Frame(status_col, bg=BG)
-        status_inner.pack(anchor="w")
-        self.status_dot   = tk.Label(status_inner, bg=BG, font=("Segoe UI", 11))
-        self.status_label = tk.Label(status_inner, bg=BG, font=("Consolas", 13, "bold"))
-        self.status_dot.pack(side="left")
-        self.status_label.pack(side="left", padx=(4, 0))
-
-        # toggle button
-        self.toggle_btn = tk.Button(
-            row,
-            font=("Consolas", 10, "bold"),
-            relief="flat", bd=0,
-            padx=20, pady=8,
-            cursor="hand2",
-            command=self._toggle
-        )
-        self.toggle_btn.pack(side="right")
-
-        # ── bottom buttons ──
-        tk.Frame(self.root, bg=BG).pack(expand=True)
-
-        btn_frame = tk.Frame(self.root, bg=BG)
-        btn_frame.pack(fill="x", padx=32, pady=(0, 28))
-
-        # Save Settings
-        self.save_btn = tk.Button(
-            btn_frame,
-            text="Save Settings",
-            command=self._save,
-            bg=SURFACE, fg=TEXT_DIM,
-            activebackground=BORDER, activeforeground=TEXT,
-            font=("Consolas", 9),
-            relief="flat", bd=0,
-            pady=10, cursor="hand2",
-            highlightthickness=1,
-            highlightbackground=BORDER
-        )
-        self.save_btn.pack(fill="x", pady=(0, 8))
-
-        # Run in background / Exit row
-        bottom = tk.Frame(btn_frame, bg=BG)
-        bottom.pack(fill="x")
-
-        self.bg_btn = tk.Button(
-            bottom,
-            text="Run in Background",
-            command=self._hide_to_background,
-            bg=SURFACE, fg=TEXT_DIM,
-            activebackground=BORDER, activeforeground=TEXT,
-            font=("Consolas", 9),
-            relief="flat", bd=0,
-            pady=8, cursor="hand2",
-            highlightthickness=1,
-            highlightbackground=BORDER
-        )
-        self.bg_btn.pack(side="left", fill="x", expand=True, padx=(0, 4))
-
-        exit_btn = tk.Button(
-            bottom,
-            text="Exit",
-            command=self._exit_app,
-            bg="#1a0010", fg=RED,
-            activebackground="#2a0018", activeforeground=RED,
-            font=("Consolas", 9),
-            relief="flat", bd=0,
-            pady=8, cursor="hand2",
-            highlightthickness=1,
-            highlightbackground="#3a0020"
-        )
-        exit_btn.pack(side="right", padx=(4, 0))
-
-        self._refresh_status()
-
-    def _field(self, label_text, default, secret=False):
-        pad = dict(padx=32)
-        tk.Label(self.root, text=label_text, bg=BG, fg=TEXT_DIM,
-                 font=("Consolas", 8), anchor="w").pack(fill="x", **pad)
-        show = "●" if secret else None
+    def _entry(self, default="", secret=False):
         e = tk.Entry(
             self.root,
             bg=SURFACE, fg=TEXT,
@@ -222,126 +148,166 @@ class VortexUI:
             highlightthickness=1,
             highlightbackground=BORDER,
             highlightcolor=ACCENT,
-            show=show
+            show="●" if secret else None
         )
-        e.pack(fill="x", ipady=10, pady=(4, 0), **pad)
+        e.pack(fill="x", ipady=10, padx=36)
         e.insert(0, default)
-        if label_text == "Device Name":
-            self.name_entry = e
-        else:
-            self.pass_entry = e
+        return e
 
-    def _spacer(self, h=10):
-        tk.Frame(self.root, bg=BG, height=h).pack()
+    def _divider(self, pady=(24, 0)):
+        tk.Frame(self.root, bg=BORDER, height=1).pack(
+            fill="x", padx=36, pady=pady)
 
-    # ── status ───────────────────────────────────────────
-    def _refresh_status(self):
-        active = self.cfg.get("active", False)
-        if active:
-            self.status_dot.config(text="●", fg=GREEN)
-            self.status_label.config(text="Active", fg=GREEN)
-            self.toggle_btn.config(
-                text="Deactivate",
-                bg="#1a0010", fg=RED,
-                activebackground="#2a0018", activeforeground=RED,
-                highlightbackground=RED
-            )
-            self.bg_btn.config(state="normal", fg=TEXT_DIM)
-        else:
-            self.status_dot.config(text="●", fg=TEXT_DIM)
-            self.status_label.config(text="Inactive", fg=TEXT_DIM)
-            self.toggle_btn.config(
-                text="  Activate  ",
+    def _btn(self, text, cmd, primary=True):
+        if primary:
+            b = tk.Button(
+                self.root, text=text, command=cmd,
                 bg=ACCENT_DIM, fg=ACCENT,
-                activebackground="#006878", activeforeground=ACCENT,
-                highlightbackground=ACCENT
+                activebackground="#005566", activeforeground=ACCENT,
+                font=("Consolas", 11, "bold"),
+                relief="flat", bd=0, pady=13, cursor="hand2",
+                highlightthickness=1, highlightbackground=ACCENT
             )
-            self.bg_btn.config(state="disabled", fg="#222233")
-
-    # ── toggle ───────────────────────────────────────────
-    def _toggle(self):
-        self._apply_fields()
-        self.cfg["active"] = not self.cfg.get("active", False)
-        save_config(self.cfg)
-
-        if self.cfg["active"]:
-            set_autostart(True)
-            self._start_agent()
         else:
-            set_autostart(False)
-            self._stop_agent()
+            b = tk.Button(
+                self.root, text=text, command=cmd,
+                bg=SURFACE, fg=TEXT_MID,
+                activebackground=BORDER, activeforeground=TEXT,
+                font=("Consolas", 10),
+                relief="flat", bd=0, pady=10, cursor="hand2",
+                highlightthickness=1, highlightbackground=BORDER
+            )
+        b.pack(fill="x", padx=36, pady=(10, 0))
+        return b
 
-        self._refresh_status()
+    # ══════════════════════════════════════════════════════
+    # FIRST RUN — SETUP SCREEN
+    # ══════════════════════════════════════════════════════
+    def _build_setup(self):
+        self._clear()
+        self._header("First-time Setup")
 
-    # ── agent control ────────────────────────────────────
-    def _start_agent(self):
-        import importlib.util
-        agent_path = Path(__file__).parent / "agent.py"
+        tk.Label(self.root,
+                 text="Set a name and password for this device.\nYou'll use these to connect from your phone.",
+                 bg=BG, fg=TEXT_MID,
+                 font=("Consolas", 8),
+                 justify="left").pack(anchor="w", padx=36, pady=(16, 0))
 
-        def run():
-            try:
-                spec = importlib.util.spec_from_file_location("vortex_agent", agent_path)
-                mod  = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(mod)
-                mod.run_server()
-            except Exception as e:
-                print(f"[Vortex] agent error: {e}")
+        self._label("DEVICE NAME")
+        self.name_e = self._entry(platform.node())
 
-        if not self.agent_thread or not self.agent_thread.is_alive():
-            self.agent_thread = threading.Thread(target=run, daemon=True)
-            self.agent_thread.start()
+        self._label("PASSWORD")
+        self.pass_e = self._entry(secret=True)
 
-    def _stop_agent(self):
+        self._label("CONFIRM PASSWORD")
+        self.pass2_e = self._entry(secret=True)
+
+        self.err_lbl = tk.Label(self.root, text="", bg=BG, fg=RED,
+                                font=("Consolas", 8))
+        self.err_lbl.pack(pady=(10, 0))
+
+        tk.Frame(self.root, bg=BG).pack(expand=True)
+
+        self._btn("Start Agent", self._finish_setup, primary=True)
+        tk.Frame(self.root, bg=BG, height=28).pack()
+
+    def _finish_setup(self):
+        name  = self.name_e.get().strip() or platform.node()
+        pwd   = self.pass_e.get().strip()
+        pwd2  = self.pass2_e.get().strip()
+
+        if not pwd:
+            self.err_lbl.config(text="⚠  Password cannot be empty")
+            return
+        if pwd != pwd2:
+            self.err_lbl.config(text="⚠  Passwords do not match")
+            return
+
+        cfg = {
+            "device_name": name,
+            "password": pwd,
+            "port": 8765
+        }
+        save_config(cfg)
+        set_autostart(True)
+        start_agent_background()
+
+        # Switch to settings screen, hide window
+        self._build_settings()
+        self.root.after(300, self._hide)
+
+    # ══════════════════════════════════════════════════════
+    # SETTINGS SCREEN (after setup)
+    # ══════════════════════════════════════════════════════
+    def _build_settings(self):
+        self._clear()
+        cfg = load_config() or {}
+
+        self._header("Agent Control Panel")
+
+        # Status indicator
+        status_row = tk.Frame(self.root, bg=BG)
+        status_row.pack(fill="x", padx=36, pady=(20, 0))
+        tk.Label(status_row, text="●", bg=BG, fg=GREEN,
+                 font=("Segoe UI", 12)).pack(side="left")
+        tk.Label(status_row, text="  Running in background", bg=BG, fg=GREEN,
+                 font=("Consolas", 10, "bold")).pack(side="left")
+
+        self._divider(pady=(20, 0))
+
+        self._label("DEVICE NAME")
+        self.name_e = self._entry(cfg.get("device_name", platform.node()))
+
+        self._label("PASSWORD")
+        self.pass_e = self._entry(cfg.get("password", ""), secret=True)
+
+        self.err_lbl = tk.Label(self.root, text="", bg=BG, fg=RED,
+                                font=("Consolas", 8))
+        self.err_lbl.pack(pady=(8, 0))
+
+        tk.Frame(self.root, bg=BG).pack(expand=True)
+
+        self._btn("Save & Hide", self._save_and_hide, primary=True)
+        self._btn("Exit Agent", self._exit_agent, primary=False)
+        tk.Frame(self.root, bg=BG, height=24).pack()
+
+    def _save_and_hide(self):
+        cfg = load_config() or {}
+        name = self.name_e.get().strip() or platform.node()
+        pwd  = self.pass_e.get().strip()
+
+        if not pwd:
+            self.err_lbl.config(text="⚠  Password cannot be empty")
+            return
+
+        cfg["device_name"] = name
+        cfg["password"]    = pwd
+        save_config(cfg)
+        self._hide()
+
+    def _hide(self):
+        self.root.withdraw()
+
+    def _exit_agent(self):
+        set_autostart(False)
         try:
             import vortex_agent as ag
             ag.agent_running = False
         except Exception:
             pass
-
-    # ── save ─────────────────────────────────────────────
-    def _apply_fields(self):
-        self.cfg["device_name"] = self.name_entry.get().strip() or platform.node()
-        self.cfg["password"]    = self.pass_entry.get().strip()
-
-    def _save(self):
-        self._apply_fields()
-        save_config(self.cfg)
-        self.save_btn.config(fg=GREEN)
-        self.root.after(800, lambda: self.save_btn.config(fg=TEXT_DIM))
-
-    # ── window control ───────────────────────────────────
-    def _hide_to_background(self):
-        """Window লুকিয়ে background এ চালু রাখো।"""
-        self._apply_fields()
-        save_config(self.cfg)
-        self.root.withdraw()   # window hide — process চলতে থাকে
-        self._hidden = True
-
-    def _on_close(self):
-        """X বাটন চাপলে — active থাকলে background এ যাবে, নইলে বন্ধ।"""
-        self._apply_fields()
-        save_config(self.cfg)
-        if self.cfg.get("active", False):
-            self.root.withdraw()   # background এ চলতে থাকবে
-            self._hidden = True
-        else:
-            self.root.destroy()
-
-    def _exit_app(self):
-        """সম্পূর্ণ বন্ধ করো — agent ও বন্ধ হবে।"""
-        self._apply_fields()
-        self.cfg["active"] = False
-        save_config(self.cfg)
-        set_autostart(False)
-        self._stop_agent()
         self.root.destroy()
         os._exit(0)
+
+    # ── close button ─────────────────────────────────────
+    def _on_close(self):
+        """X চাপলে hide হবে — বন্ধ হবে না।"""
+        self._hide()
 
 
 # ─────────────────────────────────────────────────────────
 def show_setup():
-    VortexUI()
+    VortexApp()
     return load_config()
 
 if __name__ == "__main__":
-    VortexUI()
+    VortexApp()
