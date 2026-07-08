@@ -1608,39 +1608,87 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ═══════════════════════════════════════
-    // NETWORK — SCAN
+    // NETWORK — SCAN (UDP Broadcast first, then TCP fallback)
     // ═══════════════════════════════════════
     private fun scanNetwork(): List<VortexDevice> {
         val devices = mutableListOf<VortexDevice>()
+
+        // Step 1: UDP broadcast scan — fast (agent broadcasts on port 8766)
+        try {
+            val udpSocket = java.net.DatagramSocket(8766).apply {
+                soTimeout = 3000
+                broadcast = true
+            }
+            val buf = ByteArray(1024)
+            val deadline = System.currentTimeMillis() + 3000
+            while (System.currentTimeMillis() < deadline) {
+                try {
+                    val packet = java.net.DatagramPacket(buf, buf.size)
+                    udpSocket.receive(packet)
+                    val msg = String(packet.data, 0, packet.length)
+                    val json = com.google.gson.JsonParser.parseString(msg).asJsonObject
+                    if (json.get("type")?.asString == "vortex_agent") {
+                        val ip   = packet.address.hostAddress ?: continue
+                        val name = json.get("name")?.asString ?: "PC-$ip"
+                        val port = json.get("port")?.asInt ?: 8765
+                        val os   = json.get("os")?.asString ?: "Windows"
+                        if (devices.none { it.ip == ip }) {
+                            val start = System.currentTimeMillis()
+                            val online = isReachable(ip, port)
+                            val ping = System.currentTimeMillis() - start
+                            devices.add(VortexDevice(name, ip, port, online, ping, os))
+                        }
+                    }
+                } catch (e: java.net.SocketTimeoutException) { break }
+                catch (e: Exception) { break }
+            }
+            udpSocket.close()
+        } catch (e: Exception) { }
+
+        // Step 2: Check saved devices (if not found via UDP)
         val saved = loadSavedDevices()
         saved.forEach { device ->
-            val start = System.currentTimeMillis()
-            if (isReachable(device.ip, device.port)) {
-                devices.add(device.copy(online = true, ping = System.currentTimeMillis() - start))
-            } else {
-                devices.add(device.copy(online = false))
+            if (devices.none { it.ip == device.ip }) {
+                val start = System.currentTimeMillis()
+                val online = isReachable(device.ip, device.port)
+                val ping = System.currentTimeMillis() - start
+                devices.add(device.copy(online = online, ping = if (online) ping else 0))
             }
         }
-        try {
-            val localIp = getLocalIpAddress() ?: return devices
-            val subnet = localIp.substringBeforeLast(".")
-            for (i in 1..254) {
-                val ip = "$subnet.$i"
-                if (devices.any { it.ip == ip }) continue
-                val start = System.currentTimeMillis()
-                if (isReachable(ip, 8765)) {
-                    val ping = System.currentTimeMillis() - start
-                    devices.add(VortexDevice("PC-$ip", ip, 8765, true, ping))
+
+        // Step 3: TCP fallback scan (parallel, fast timeout)
+        if (devices.isEmpty()) {
+            try {
+                val localIp = getLocalIpAddress() ?: return devices
+                val subnet = localIp.substringBeforeLast(".")
+                val futures = (1..254).map { i ->
+                    val ip = "$subnet.$i"
+                    executor.submit<VortexDevice?> {
+                        if (devices.any { it.ip == ip }) return@submit null
+                        val start = System.currentTimeMillis()
+                        if (isReachable(ip, 8765)) {
+                            val ping = System.currentTimeMillis() - start
+                            VortexDevice("PC-$ip", ip, 8765, true, ping)
+                        } else null
+                    }
                 }
-            }
-        } catch (e: Exception) { }
+                futures.forEach { future ->
+                    try {
+                        future.get(300, java.util.concurrent.TimeUnit.MILLISECONDS)?.let {
+                            devices.add(it)
+                        }
+                    } catch (e: Exception) { }
+                }
+            } catch (e: Exception) { }
+        }
+
         return devices
     }
 
     private fun isReachable(ip: String, port: Int): Boolean {
         return try {
             Socket().use { socket ->
-                socket.connect(InetSocketAddress(ip, port), 500)
+                socket.connect(InetSocketAddress(ip, port), 200)
                 true
             }
         } catch (e: Exception) { false }
