@@ -5,6 +5,15 @@ android {
     namespace "com.vortexapp"
     compileSdk rootProject.ext.compileSdkVersion
 
+    signingConfigs {
+        vortexDebug {
+            storeFile file("vortex-debug.keystore")
+            storePassword "vortex123"
+            keyAlias "vortex-debug"
+            keyPassword "vortex123"
+        }
+    }
+
     defaultConfig {
         applicationId "com.vortexapp"
         minSdk rootProject.ext.minSdkVersion
@@ -14,9 +23,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            signingConfig signingConfigs.vortexDebug
+        }
         release {
             minifyEnabled false
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.vortexDebug
         }
     }
 
@@ -28,7 +40,6 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
-
 }
 
 dependencies {
