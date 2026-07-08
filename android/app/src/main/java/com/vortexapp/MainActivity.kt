@@ -228,6 +228,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showTab(idx: Int) {
+        // Tab 1 (Control) and Tab 2 (Files) need connection
+        val needsConnection = idx == 1 || idx == 2
+        if (needsConnection && connectedDevice == null) {
+            showNeedsConnectionPrompt(idx)
+            return
+        }
+
         currentTab = idx
         contentArea.removeAllViews()
 
@@ -235,8 +242,12 @@ class MainActivity : AppCompatActivity() {
             val active = i == idx
             tabIndicators[i]?.visibility = if (active) View.VISIBLE else View.INVISIBLE
             val tab = tabButtons[i] ?: continue
-            val color = if (active) C.CYAN else Color.argb(80, 255, 255, 255)
-            // BUG FIX #3: getChildAt index was off — indicator is child 0, icon is 1, label is 2
+            val isLocked = (i == 1 || i == 2) && connectedDevice == null
+            val color = when {
+                active   -> C.CYAN
+                isLocked -> Color.argb(35, 255, 255, 255)  // very dim = locked
+                else     -> Color.argb(80, 255, 255, 255)
+            }
             (tab.getChildAt(1) as? TextView)?.setTextColor(color)
             (tab.getChildAt(2) as? TextView)?.setTextColor(color)
         }
@@ -249,6 +260,84 @@ class MainActivity : AppCompatActivity() {
             else -> buildDevicesTab()
         }
         contentArea.addView(view)
+    }
+
+    private fun showNeedsConnectionPrompt(targetTab: Int) {
+        // Just switch to devices tab with a message
+        currentTab = 0
+        contentArea.removeAllViews()
+
+        for (i in 0..3) {
+            val active = i == 0
+            tabIndicators[i]?.visibility = if (active) View.VISIBLE else View.INVISIBLE
+            val tab = tabButtons[i] ?: continue
+            val isLocked = (i == 1 || i == 2) && connectedDevice == null
+            val color = when {
+                active   -> C.CYAN
+                isLocked -> Color.argb(35, 255, 255, 255)
+                else     -> Color.argb(80, 255, 255, 255)
+            }
+            (tab.getChildAt(1) as? TextView)?.setTextColor(color)
+            (tab.getChildAt(2) as? TextView)?.setTextColor(color)
+        }
+
+        val tabName = if (targetTab == 1) "Control" else "Files"
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            layoutParams = FrameLayout.LayoutParams(MATCH, MATCH)
+            setPadding(dp(32), 0, dp(32), dp(80))
+        }
+        layout.addView(TextView(this).apply { text = "🔒"; textSize = 40f; gravity = Gravity.CENTER })
+        layout.addView(spacer(12))
+        layout.addView(TextView(this).apply {
+            text = "$tabName is locked"
+            setTextColor(C.T_MED); textSize = 18f; gravity = Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+        })
+        layout.addView(spacer(8))
+        layout.addView(TextView(this).apply {
+            text = "Connect to a PC first to use $tabName"
+            setTextColor(C.T_LOW); textSize = 12f; gravity = Gravity.CENTER
+        })
+        layout.addView(spacer(24))
+        layout.addView(TextView(this).apply {
+            text = "SCAN FOR DEVICES"
+            setTextColor(C.CYAN); textSize = 12f; gravity = Gravity.CENTER
+            letterSpacing = 0.1f
+            setPadding(dp(24), dp(14), dp(24), dp(14))
+            background = cardBg(Color.argb(30, 0, 229, 255), Color.argb(80, 0, 229, 255), 10f)
+            setOnClickListener {
+                currentTab = 0
+                contentArea.removeAllViews()
+                contentArea.addView(buildDevicesTab())
+                for (i in 0..3) {
+                    tabIndicators[i]?.visibility = if (i == 0) View.VISIBLE else View.INVISIBLE
+                    val tab = tabButtons[i] ?: return@setOnClickListener
+                    val isLocked2 = (i == 1 || i == 2) && connectedDevice == null
+                    val c = if (i == 0) C.CYAN else if (isLocked2) Color.argb(35,255,255,255) else Color.argb(80,255,255,255)
+                    (tab.getChildAt(1) as? TextView)?.setTextColor(c)
+                    (tab.getChildAt(2) as? TextView)?.setTextColor(c)
+                }
+            }
+        })
+        contentArea.addView(layout)
+    }
+
+    // Call this after connect/disconnect to refresh tab states
+    private fun refreshTabStates() {
+        for (i in 0..3) {
+            val active = i == currentTab
+            val isLocked = (i == 1 || i == 2) && connectedDevice == null
+            val tab = tabButtons[i] ?: continue
+            val color = when {
+                active   -> C.CYAN
+                isLocked -> Color.argb(35, 255, 255, 255)
+                else     -> Color.argb(80, 255, 255, 255)
+            }
+            (tab.getChildAt(1) as? TextView)?.setTextColor(color)
+            (tab.getChildAt(2) as? TextView)?.setTextColor(color)
+        }
     }
 
     // ═══════════════════════════════════════
@@ -460,54 +549,262 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ═══════════════════════════════════════
-    // TAB 2 — CONTROL
+    // TAB 2 — CONTROL (Main Menu)
     // ═══════════════════════════════════════
     private fun buildControlTab(): View {
-        if (connectedDevice == null) {
-            return buildNotConnectedView()
+        val scroll = ScrollView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(MATCH, MATCH)
+            setBackgroundColor(C.BG)
         }
-        return buildControlContent()
-    }
-
-    private fun buildNotConnectedView(): LinearLayout {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            layoutParams = FrameLayout.LayoutParams(MATCH, MATCH)
-            setPadding(dp(32), 0, dp(32), 0)
+            setPadding(dp(16), dp(16), dp(16), dp(24))
         }
-        layout.addView(TextView(this).apply {
-            text = "⚡"
-            textSize = 48f
-            gravity = Gravity.CENTER
+        scroll.addView(layout)
+
+        val device = connectedDevice
+        layout.addView(buildConnectedHeader(device ?: VortexDevice("Unknown", "")))
+        layout.addView(spacer(20))
+
+        // Main menu items
+        val menuItems = listOf(
+            Triple("🖥", "Screen", "Live view & touch control"),
+            Triple("📊", "Dashboard", "Stats, actions & sliders"),
+            Triple("💻", "Shell", "Run commands on PC"),
+            Triple("🎵", "Media", "Control music & volume"),
+            Triple("🔔", "Alerts", "Battery, USB & notifications"),
+            Triple("📋", "Clipboard", "Sync clipboard"),
+            Triple("💬", "Messages", "Send messages to PC"),
+            Triple("📁", "File Manager", "Browse & transfer files"),
+            Triple("⚡", "Power", "Shutdown, restart, sleep"),
+            Triple("🎮", "Performance", "Gaming mode & cleanup"),
+            Triple("📦", "App Manager", "Install & uninstall apps")
+        )
+
+        menuItems.forEach { (icon, title, desc) ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(14), dp(14), dp(14), dp(14))
+                background = cardBg(Color.argb(12, 0, 229, 255), Color.argb(30, 0, 229, 255), 12f)
+                layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(8) }
+                setOnClickListener { showControlSubMenu(title) }
+            }
+
+            val iconBox = frameBox(dp(40), dp(40),
+                Color.argb(25, 0, 229, 255), Color.argb(50, 0, 229, 255), 10f)
+            iconBox.addView(TextView(this).apply {
+                text = icon; textSize = 18f; gravity = Gravity.CENTER
+            })
+            row.addView(iconBox)
+            row.addView(spacer(14, horizontal = true))
+
+            val info = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
+            }
+            info.addView(TextView(this).apply {
+                text = title; setTextColor(C.T_HIGH); textSize = 13f
+                setTypeface(typeface, Typeface.BOLD)
+            })
+            info.addView(TextView(this).apply {
+                text = desc; setTextColor(C.T_LOW); textSize = 10f
+            })
+            row.addView(info)
+            row.addView(TextView(this).apply {
+                text = "›"; setTextColor(C.CYAN); textSize = 22f
+            })
+            layout.addView(row)
+        }
+
+        return scroll
+    }
+
+    private fun showControlSubMenu(section: String) {
+        contentArea.removeAllViews()
+        val view = when (section) {
+            "Screen"       -> buildScreenSubMenu()
+            "Dashboard"    -> buildControlContent()
+            "Shell"        -> buildShellSubMenu()
+            "Media"        -> buildMediaSubMenu()
+            "Alerts"       -> buildAlertsSubMenu()
+            "Clipboard"    -> buildClipboardSubMenu()
+            "Messages"     -> buildMessagesSubMenu()
+            "File Manager" -> buildFilesTab()
+            "Power"        -> buildPowerSubMenu()
+            "Performance"  -> buildPerfSubMenu()
+            "App Manager"  -> buildAppManagerSubMenu()
+            else           -> buildControlTab()
+        }
+        contentArea.addView(view)
+    }
+
+    private fun buildSubMenuHeader(title: String, icon: String): LinearLayout {
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), dp(4), dp(4), dp(16))
+        }
+        val back = TextView(this).apply {
+            text = "← "
+            setTextColor(C.CYAN); textSize = 16f
+            setPadding(0, dp(8), dp(8), dp(8))
+            setOnClickListener { showTab(1) }
+        }
+        header.addView(back)
+        header.addView(TextView(this).apply { text = icon; textSize = 18f })
+        header.addView(spacer(8, horizontal = true))
+        header.addView(TextView(this).apply {
+            text = title; setTextColor(C.T_HIGH); textSize = 16f
+            setTypeface(typeface, Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
         })
+        return header
+    }
+
+    private fun buildScreenSubMenu(): ScrollView {
+        val scroll = ScrollView(this).apply { layoutParams = FrameLayout.LayoutParams(MATCH, MATCH); setBackgroundColor(C.BG) }
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(24)) }
+        scroll.addView(layout)
+        layout.addView(buildSubMenuHeader("Screen Control", "🖥"))
+        layout.addView(buildScreenCard())
+        return scroll
+    }
+
+    private fun buildShellSubMenu(): ScrollView {
+        val scroll = ScrollView(this).apply { layoutParams = FrameLayout.LayoutParams(MATCH, MATCH); setBackgroundColor(C.BG) }
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(24)) }
+        scroll.addView(layout)
+        layout.addView(buildSubMenuHeader("Shell Terminal", "💻"))
+        layout.addView(buildShellCard())
+        return scroll
+    }
+
+    private fun buildMediaSubMenu(): ScrollView {
+        val scroll = ScrollView(this).apply { layoutParams = FrameLayout.LayoutParams(MATCH, MATCH); setBackgroundColor(C.BG) }
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(24)) }
+        scroll.addView(layout)
+        layout.addView(buildSubMenuHeader("Media Control", "🎵"))
+        layout.addView(buildMediaCard())
+        return scroll
+    }
+
+    private fun buildAlertsSubMenu(): ScrollView {
+        val scroll = ScrollView(this).apply { layoutParams = FrameLayout.LayoutParams(MATCH, MATCH); setBackgroundColor(C.BG) }
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(24)) }
+        scroll.addView(layout)
+        layout.addView(buildSubMenuHeader("Alerts & Notifications", "🔔"))
+        layout.addView(buildAlertsCard())
+        return scroll
+    }
+
+    private fun buildClipboardSubMenu(): ScrollView {
+        val scroll = ScrollView(this).apply { layoutParams = FrameLayout.LayoutParams(MATCH, MATCH); setBackgroundColor(C.BG) }
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(24)) }
+        scroll.addView(layout)
+        layout.addView(buildSubMenuHeader("Clipboard Sync", "📋"))
+        layout.addView(buildClipboardCard())
+        return scroll
+    }
+
+    private fun buildMessagesSubMenu(): ScrollView {
+        val scroll = ScrollView(this).apply { layoutParams = FrameLayout.LayoutParams(MATCH, MATCH); setBackgroundColor(C.BG) }
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(24)) }
+        scroll.addView(layout)
+        layout.addView(buildSubMenuHeader("Messages", "💬"))
+        layout.addView(buildMessagesCard())
+        return scroll
+    }
+
+    private fun buildPowerSubMenu(): ScrollView {
+        val scroll = ScrollView(this).apply { layoutParams = FrameLayout.LayoutParams(MATCH, MATCH); setBackgroundColor(C.BG) }
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(24)) }
+        scroll.addView(layout)
+        layout.addView(buildSubMenuHeader("Power Control", "⚡"))
+        layout.addView(spacer(8))
+
+        val actions = listOf(
+            Triple("🔴", "Shutdown", "shutdown"),
+            Triple("🔄", "Restart", "restart"),
+            Triple("💤", "Sleep", "sleep"),
+            Triple("❌", "Cancel", "cancel")
+        )
+        actions.forEach { (icon, label, cmd) ->
+            val btn = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(16), dp(16), dp(16), dp(16))
+                background = cardBg(Color.argb(15, 0, 229, 255), Color.argb(35, 0, 229, 255), 12f)
+                layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(8) }
+                setOnClickListener {
+                    sendCommand(cmd)
+                    showToast("$label command sent")
+                }
+            }
+            btn.addView(TextView(this).apply { text = icon; textSize = 22f })
+            btn.addView(spacer(14, horizontal = true))
+            btn.addView(TextView(this).apply {
+                text = label; setTextColor(C.T_HIGH); textSize = 14f
+                layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
+            })
+            btn.addView(TextView(this).apply { text = "›"; setTextColor(C.T_FAINT); textSize = 20f })
+            layout.addView(btn)
+        }
+        return scroll
+    }
+
+    private fun buildPerfSubMenu(): ScrollView {
+        val scroll = ScrollView(this).apply { layoutParams = FrameLayout.LayoutParams(MATCH, MATCH); setBackgroundColor(C.BG) }
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(24)) }
+        scroll.addView(layout)
+        layout.addView(buildSubMenuHeader("Performance", "🎮"))
+        layout.addView(spacer(8))
+
+        val actions = listOf(
+            Triple("🎮", "Gaming Mode", "perf:gaming_mode"),
+            Triple("🧹", "Clear Temp Files", "perf:temp_clean"),
+            Triple("💾", "Disk Cleanup", "perf:disk_cleanup"),
+            Triple("🔧", "Clear RAM", "perf:ram_clear")
+        )
+        actions.forEach { (icon, label, cmd) ->
+            val btn = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(16), dp(16), dp(16), dp(16))
+                background = cardBg(Color.argb(15, 0, 229, 255), Color.argb(35, 0, 229, 255), 12f)
+                layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply { bottomMargin = dp(8) }
+                setOnClickListener {
+                    sendCommand(cmd)
+                    showToast("$label started...")
+                }
+            }
+            btn.addView(TextView(this).apply { text = icon; textSize = 22f })
+            btn.addView(spacer(14, horizontal = true))
+            btn.addView(TextView(this).apply {
+                text = label; setTextColor(C.T_HIGH); textSize = 14f
+                layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
+            })
+            btn.addView(TextView(this).apply { text = "›"; setTextColor(C.T_FAINT); textSize = 20f })
+            layout.addView(btn)
+        }
+        return scroll
+    }
+
+    private fun buildAppManagerSubMenu(): ScrollView {
+        val scroll = ScrollView(this).apply { layoutParams = FrameLayout.LayoutParams(MATCH, MATCH); setBackgroundColor(C.BG) }
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(24)) }
+        scroll.addView(layout)
+        layout.addView(buildSubMenuHeader("App Manager", "📦"))
         layout.addView(spacer(16))
         layout.addView(TextView(this).apply {
-            text = "Not Connected"
-            setTextColor(C.T_MED)
-            textSize = 18f
-            gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
+            text = "+ INSTALL NEW APP"
+            setTextColor(C.CYAN); textSize = 11f; gravity = Gravity.CENTER
+            letterSpacing = 0.1f; setPadding(0, dp(14), 0, dp(14))
+            background = cardBg(Color.argb(20, 0, 229, 255), Color.argb(50, 0, 229, 255), 10f)
+            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
+            setOnClickListener { showInstallDialog() }
         })
-        layout.addView(spacer(8))
-        layout.addView(TextView(this).apply {
-            text = "Go to Devices tab and connect to a PC first"
-            setTextColor(C.T_LOW)
-            textSize = 12f
-            gravity = Gravity.CENTER
-        })
-        layout.addView(spacer(24))
-        layout.addView(TextView(this).apply {
-            text = "GO TO DEVICES"
-            setTextColor(C.CYAN)
-            textSize = 12f
-            gravity = Gravity.CENTER
-            letterSpacing = 0.1f
-            setPadding(dp(24), dp(14), dp(24), dp(14))
-            background = cardBg(Color.argb(30, 0, 229, 255), Color.argb(80, 0, 229, 255), 10f)
-            setOnClickListener { showTab(0) }
-        })
-        return layout
+        return scroll
     }
 
     private fun buildControlContent(): ScrollView {
@@ -1710,6 +2007,7 @@ class MainActivity : AppCompatActivity() {
                     connectedDevice = null
                     statsRunnable?.let { handler.removeCallbacks(it) }
                     statsRunnable = null
+                    refreshTabStates()
                     showToast("Disconnected")
                     showTab(0)
                 }
@@ -1729,6 +2027,7 @@ class MainActivity : AppCompatActivity() {
                     connectedDevice = device
                     saveDeviceWithPassword(device, password)
                     showToast("Connected to ${device.name}!")
+                    refreshTabStates()
                     showTab(1)
                 }
                 "auth_fail" -> {
