@@ -396,76 +396,24 @@ def run_server():
     loop.run_until_complete(serve())
 
 # ══════════════════════════
-# SYSTEM TRAY (pystray)
-# ══════════════════════════
-def create_tray_icon():
-    try:
-        import pystray
-        from PIL import Image, ImageDraw
-
-        # Create icon image (cyan lightning bolt style)
-        size = 64
-        img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(img)
-        # Draw a simple V shape / bolt
-        draw.rectangle([8, 8, 56, 56], fill=(0, 229, 255, 255))
-        draw.polygon([(32, 10), (18, 36), (30, 36), (22, 54), (46, 28), (34, 28)],
-                    fill=(3, 3, 16, 255))
-
-        def get_status(item):
-            c = len(authenticated_clients)
-            return f"{c} phone connected" if c == 1 else f"{c} phones connected"
-
-        def on_exit(icon, item):
-            global agent_running
-            agent_running = False
-            icon.stop()
-            os._exit(0)
-
-        def copy_ip(icon, item):
-            ip = get_local_ip()
-            subprocess.run(['powershell', '-Command', f'Set-Clipboard -Value "{ip}"'],
-                          shell=False)
-            show_notification("Vortex", f"IP copied: {ip}")
-
-        def open_settings(icon, item):
-            from config import show_setup
-            show_setup()
-            global CONFIG
-            CONFIG = load_config()
-
-        menu = pystray.Menu(
-            pystray.MenuItem(get_status, None, enabled=False),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Copy IP Address", copy_ip),
-            pystray.MenuItem("Settings", open_settings),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Exit", on_exit),
-        )
-
-        icon = pystray.Icon("VortexAgent", img, "Vortex Agent", menu)
-        icon.run()
-
-    except ImportError:
-        # pystray not available — just keep running silently
-        while agent_running:
-            time.sleep(1)
-
-# ══════════════════════════
 # MAIN
 # ══════════════════════════
 def main():
-    if not CONFIG_FILE.exists():
-        from config import show_setup
-        show_setup()
-        global CONFIG
-        CONFIG = load_config()
+    """
+    Open the Vortex UI window.
+    The UI itself handles starting / stopping the agent via the toggle.
+    If the agent was left Active from last session, auto-start the server.
+    """
+    global CONFIG
+    from config import VortexUI, load_config
 
-    show_notification("Vortex Agent", f"Running on {get_local_ip()}:{CONFIG['port']}")
+    # If previously set to active, start server in background immediately
+    cfg = load_config()
+    if cfg.get("active", False):
+        threading.Thread(target=run_server, daemon=True).start()
 
-    threading.Thread(target=run_server, daemon=True).start()
-
-    create_tray_icon()
+    # Open the UI window (blocks until user closes it)
+    VortexUI()
 
 if __name__ == "__main__":
     main()
